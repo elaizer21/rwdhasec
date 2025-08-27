@@ -1395,6 +1395,26 @@
       border-color: #be123c;
     }
   </style>
+
+<script>
+(function(){
+  if (window.__render_signatures_helper) return;
+  window.__render_signatures_helper = true;
+  // Returns HTML string for signature thumbnails if present on a record/log entry
+  window.renderSignaturesForRecord = function(rec) {
+    if (!rec) return '';
+    let html = '';
+    if (rec.signature) {
+      html += `<div class="sig-thumb"><div class="sig-label">Checkout</div><img src="${rec.signature}" alt="checkout-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;"/></div>`;
+    }
+    if (rec.return_signature) {
+      html += `<div class="sig-thumb"><div class="sig-label">Return</div><img src="${rec.return_signature}" alt="return-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;"/></div>`;
+    }
+    return html ? `<div class="sig-container" style="display:flex;gap:8px;align-items:center;">${html}</div>` : '';
+  };
+})();
+</script>
+
 </head>
 <body>
 <div id="toast"></div>
@@ -3228,7 +3248,7 @@ function renderCheckinTable() {
       <td>${record.time_taken}</td>
       <td>${status}</td>
       <td><button class="rw-btn px-2 py-1 rounded text-xs" onclick="showCheckinModal('${record.id}')">Return Items</button></td>
-    `;
+    \n      ${renderSignaturesForRecord(record) || ''}`;
     tbody.appendChild(tr);
   });
 }
@@ -3610,7 +3630,7 @@ function renderReport() {
       <td>${h.returned_by||''}</td>
       <td>${h.receiver||''}</td>
       <td>${h.time_brought||''}</td>
-      <td>${h.remarks||''}</td>`;
+      <td>${h.remarks||''}</td>\n      ${renderSignaturesForRecord(record) || ''}`;
     tbody.appendChild(tr);
   });
   // Pagination controls
@@ -4934,5 +4954,774 @@ if (modalContent) {
   observer.observe(modalContent, { childList: true, subtree: false });
 }
 </script>
+
+
+
+
+<!-- BEGIN AUTO-PATCH: checkout/checkin signature + return-quantity behavior (v3) -->
+<script>
+(function () {
+  // Prevent duplicate injection
+  if (window.__checkout_checkin_patch_v3) return;
+  window.__checkout_checkin_patch_v3 = true;
+
+  // Utility: capture signature from canvas
+  function captureSignatureDataUrl(kind) {
+    try {
+      const id = kind === 'checkout' ? 'sigCanvasCheckout' : 'sigCanvasReturned';
+      const canvas = document.getElementById(id);
+      if (!canvas) return null;
+      return canvas.toDataURL('image/png');
+    } catch (e) {
+      console.warn('captureSignatureDataUrl error', e);
+      return null;
+    }
+  }
+
+  function clearSignatureCanvas(kind) {
+    const id = kind === 'checkout' ? 'sigCanvasCheckout' : 'sigCanvasReturned';
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    const statusId = kind === 'checkout' ? 'sigStatusCheckout' : 'sigStatusReturn';
+    const status = document.getElementById(statusId);
+    if (status) status.textContent = '';
+  }
+
+  // Attach signature on checkout
+  if (typeof window.handleCheckOut === 'function') {
+    const orig = window.handleCheckOut;
+    window.handleCheckOut = function(e) {
+      const sigData = captureSignatureDataUrl('checkout');
+      const ret = orig.call(this, e);
+      setTimeout(()=>{
+        try {
+          if (sigData && Array.isArray(window.accessHistory) && window.accessHistory.length>0) {
+            const last = window.accessHistory[window.accessHistory.length-1];
+            if (last) {
+              last.signature = sigData;
+              if (Array.isArray(window.logs)) {
+                const log = window.logs.find(l=>l.id===last.id) || window.logs[window.logs.length-1];
+                if (log) log.signature = sigData;
+              }
+              localStorage.setItem('accessHistory', JSON.stringify(window.accessHistory));
+              localStorage.setItem('logs', JSON.stringify(window.logs));
+            }
+          }
+        } catch(e){ console.warn(e); }
+        clearSignatureCanvas('checkout');
+      }, 60);
+      return ret;
+    };
+  }
+
+  // Attach signature on checkin
+  if (typeof window.handleCheckinSubmit === 'function') {
+    const origIn = window.handleCheckinSubmit;
+    window.handleCheckinSubmit = function(recordId) {
+      const sigData = captureSignatureDataUrl('returned');
+      const ret = origIn.call(this, recordId);
+      setTimeout(()=>{
+        try {
+          if (!recordId) return;
+          if (Array.isArray(window.accessHistory)) {
+            const rec = window.accessHistory.find(r=>r.id===recordId) || window.accessHistory[window.accessHistory.length-1];
+            if (rec && sigData) {
+              rec.return_signature = sigData;
+              if (Array.isArray(window.logs)) {
+                const log = window.logs.find(l=>l.id===recordId) || window.logs[window.logs.length-1];
+                if (log) log.return_signature = sigData;
+              }
+              localStorage.setItem('accessHistory', JSON.stringify(window.accessHistory));
+              localStorage.setItem('logs', JSON.stringify(window.logs));
+            }
+          }
+        } catch(e){ console.warn(e); }
+        clearSignatureCanvas('returned');
+      }, 60);
+      return ret;
+    };
+  }
+
+  // Normalize selected items UI: ensure cards have no editable quantity, keys keep editable
+  let _normalizing = false;
+  let _observer = null;
+
+  function normalizeSelectedItemsUI() {
+    if (_normalizing) return;
+    _normalizing = true;
+    try {
+      const container = document.getElementById('selectedItemsList');
+      if (!container) return;
+      // Temporarily disconnect observer to avoid re-entry loops
+      if (_observer) _observer.disconnect();
+
+      const items = Array.from(container.querySelectorAll('.selected-item'));
+      items.forEach(item => {
+        const type = item.dataset.itemType;
+        if (type === 'card') {
+          // Remove any numeric input and +/- controls safely
+          const qtyInput = item.querySelector('input.item-quantity-input');
+          if (qtyInput) qtyInput.remove();
+          const qtyControl = item.querySelector('.quantity-control');
+          if (qtyControl) qtyControl.remove();
+          // Ensure a .item-quantity span exists with value '1'
+          let span = item.querySelector('.item-quantity');
+          if (!span) {
+            span = document.createElement('span');
+            span.className = 'item-quantity';
+            span.textContent = '1';
+            // insert into item-quantity-section if present
+            const section = item.querySelector('.item-quantity-section') || item;
+            section.insertBefore(span, section.firstChild);
+          } else {
+            span.textContent = '1';
+          }
+          // Ensure remove button exists (original removeSelectedItem uses buttons)
+          const removeBtn = item.querySelector('button[onclick*="removeSelectedItem"]');
+          if (!removeBtn) {
+            const btn = document.createElement('button');
+            btn.className = 'rw-btn text-xs px-2 py-1 rounded';
+            btn.textContent = 'Remove';
+            btn.setAttribute('onclick', `removeSelectedItem('card','${item.dataset.itemId}')`);
+            const section = item.querySelector('.item-quantity-section') || item;
+            section.appendChild(btn);
+          }
+        } else if (type === 'key') {
+          // For keys, ensure there is a quantity-control (if missing, create fallback)
+          let qtyInput = item.querySelector('input.item-quantity-input');
+          if (!qtyInput) {
+            // try to find span and create input reflecting it
+            const span = item.querySelector('.item-quantity');
+            const val = span ? (parseInt(span.textContent)||1) : 1;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'item-quantity-input';
+            input.min = 1;
+            // set max to available if key found
+            const key = (window.keys || []).find(k => k.id === item.dataset.itemId);
+            input.max = key ? (key.quantity || 1) : 1;
+            input.value = val;
+            input.addEventListener('input', ()=> {
+              const s = item.querySelector('.item-quantity');
+              if (s) s.textContent = input.value;
+            });
+            const qc = item.querySelector('.item-quantity-section') || item;
+            // remove existing static span if present
+            const existingSpan = item.querySelector('.item-quantity');
+            if (existingSpan) existingSpan.remove();
+            const qtyCtrl = qc.querySelector('.quantity-control');
+            if (qtyCtrl) {
+              // try to append input in place of span
+              qtyCtrl.insertBefore(input, qtyCtrl.children[1] || null);
+            } else {
+              // append to section
+              qc.insertBefore(input, qc.firstChild);
+            }
+          } else {
+            // ensure hidden span reflects input value
+            let span = item.querySelector('.item-quantity');
+            if (!span) {
+              span = document.createElement('div');
+              span.className = 'item-quantity';
+              span.style.display = 'none';
+              item.appendChild(span);
+            }
+            span.textContent = qtyInput.value;
+            qtyInput.addEventListener('input', ()=>{ span.textContent = qtyInput.value; });
+          }
+        }
+      });
+    } catch (e) {
+      console.error('normalizeSelectedItemsUI error', e);
+    } finally {
+      // reconnect observer
+      const container = document.getElementById('selectedItemsList');
+      if (container && !_observer) {
+        _observer = new MutationObserver(()=>{ setTimeout(()=>normalizeSelectedItemsUI(), 10); });
+        _observer.observe(container, { childList: true, subtree: true });
+      } else if (container && _observer) {
+        _observer.observe(container, { childList: true, subtree: true });
+      }
+      _normalizing = false;
+    }
+  }
+
+  // adjust checkin modal inputs: default quantities and cards static with hidden inputs
+  function adjustCheckinModal(recordId) {
+    const record = Array.isArray(window.accessHistory) && window.accessHistory.find(r=>r.id===recordId);
+    if (!record) return;
+    record.items_returned.forEach(item => {
+      const id = item.id;
+      const type = item.type;
+      const inputId = `return_quantity_${type}_${id}`;
+      const wrapperId = `return_item_${type}_${id}`;
+      const input = document.getElementById(inputId);
+      const wrapper = document.getElementById(wrapperId);
+      const originalQuantity = parseInt(item.quantity) || 1;
+
+      if (type === 'key') {
+        if (input) {
+          input.min = 1;
+          input.max = originalQuantity;
+          input.value = originalQuantity;
+        }
+      } else {
+        // Card: ensure there's NO visible quantity control; keep only a hidden input set to original quantity
+        if (wrapper) {
+          // remove any quantity-control or visible spans
+          const qtyControl = wrapper.querySelector('.quantity-control'); if (qtyControl) qtyControl.remove();
+          const qtySpan = wrapper.querySelector('.item-quantity'); if (qtySpan) qtySpan.remove();
+          // remove any explicit numeric inputs
+          const numInput = wrapper.querySelector(`input[type="number"]`); if (numInput) numInput.remove();
+          // ensure hidden input exists with originalQuantity
+          let hidden = document.getElementById(inputId);
+          if (!hidden) {
+            hidden = document.createElement('input'); hidden.type = 'hidden'; hidden.id = inputId; wrapper.appendChild(hidden);
+          }
+          hidden.value = originalQuantity;
+        } else {
+          let hidden = document.getElementById(inputId);
+          if (!hidden) {
+            hidden = document.createElement('input'); hidden.type = 'hidden'; hidden.id = inputId; document.body.appendChild(hidden);
+          }
+          hidden.value = originalQuantity;
+        }
+      }
+    });
+  }
+
+  // Wrap showCheckinModal to adjust modal after render
+  if (typeof window.showCheckinModal === 'function') {
+    const origShow = window.showCheckinModal;
+    window.showCheckinModal = function(recordId) {
+      const res = origShow.call(this, recordId);
+      setTimeout(()=>{ try { adjustCheckinModal(recordId); } catch(e){console.warn(e);} }, 60);
+      return res;
+    };
+  }
+
+  // Wrap addItemToCheckout to normalize after adding
+  if (typeof window.addItemToCheckout === 'function') {
+    const origAdd = window.addItemToCheckout;
+    window.addItemToCheckout = function(type, item) {
+      const res = origAdd.call(this, type, item);
+      setTimeout(()=>{ try { normalizeSelectedItemsUI(); } catch(e){console.warn(e);} }, 40);
+      return res;
+    };
+  } else {
+    document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(normalizeSelectedItemsUI, 200); });
+    window.addEventListener('load', ()=>{ setTimeout(normalizeSelectedItemsUI, 200); });
+  }
+
+  // Start observer if container exists
+  const container = document.getElementById('selectedItemsList');
+  if (container && !_observer) {
+    _observer = new MutationObserver(()=>{ setTimeout(()=>normalizeSelectedItemsUI(), 10); });
+    _observer.observe(container, { childList: true, subtree: true });
+  }
+
+})();
+</script>
+<!-- END AUTO-PATCH -->
+
+
+<!-- BEGIN FINAL PATCH: quantity defaults & signature thumbnails -->
+<script>
+(function(){
+  if (window.__final_patch_applied) return;
+  window.__final_patch_applied = true;
+
+  // Helper: create signature thumbnail HTML
+  function signatureHTMLForRecord(rec) {
+    if (!rec) return '';
+    let parts = [];
+    if (rec.signature) {
+      parts.push(`<div class="sig-thumb" style="display:flex;flex-direction:column;align-items:center;margin-right:6px;">
+        <div style="font-size:11px;color:#444">Checkout</div>
+        <img src="${rec.signature}" alt="checkout-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;object-fit:contain;"/>
+      </div>`);
+    }
+    if (rec.return_signature) {
+      parts.push(`<div class="sig-thumb" style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-size:11px;color:#444">Return</div>
+        <img src="${rec.return_signature}" alt="return-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;object-fit:contain;"/>
+      </div>`);
+    }
+    if (parts.length === 0) return '';
+    return `<div class="sig-container" style="display:flex;gap:8px;align-items:center;">${parts.join('')}</div>`;
+  }
+
+  // Attach signature thumbnails to table rows by detecting record id in first cell (common pattern)
+  function attachSignaturesToTables() {
+    try {
+      const tables = document.querySelectorAll('table tbody');
+      if (!tables) return;
+      tables.forEach(tbody => {
+        tbody.querySelectorAll('tr').forEach(tr => {
+          if (tr.dataset.sigAttached) return;
+          const tds = tr.querySelectorAll('td');
+          if (!tds || tds.length === 0) return;
+          // Heuristic: first cell contains record id like LOG123 or similar. Extract token that matches known ids.
+          const firstText = tds[0].textContent.trim();
+          // Try to find id pattern: starts with LOG or any uppercase letters+digits, fallback to exact match with accessHistory entries.
+          let recordId = null;
+          const m = firstText.match(/LOG\d+/i);
+          if (m) recordId = m[0];
+          else {
+            // fallback: scan all accessHistory ids and find one present in row text
+            if (Array.isArray(window.accessHistory)) {
+              const txt = tr.textContent;
+              for (let r of window.accessHistory) {
+                if (!r || !r.id) continue;
+                if (txt.includes(r.id)) { recordId = r.id; break; }
+              }
+            }
+          }
+          if (!recordId) { tr.dataset.sigAttached = '0'; return; }
+          // find record
+          const rec = (Array.isArray(window.accessHistory) && window.accessHistory.find(r=>r.id===recordId)) || (Array.isArray(window.logs) && window.logs.find(l=>l.id===recordId));
+          if (!rec) { tr.dataset.sigAttached = '0'; return; }
+          const html = signatureHTMLForRecord(rec);
+          if (!html) { tr.dataset.sigAttached = '0'; return; }
+          // Append thumbnail into the last cell without breaking layout
+          const lastTd = tds[tds.length-1];
+          const wrapper = document.createElement('div');
+          wrapper.className = 'sig-row-wrapper';
+          wrapper.style.marginTop = '6px';
+          wrapper.innerHTML = html;
+          // Avoid duplication: only append if no existing sig-container
+          if (!lastTd.querySelector('.sig-container')) {
+            lastTd.appendChild(wrapper);
+          }
+          tr.dataset.sigAttached = '1';
+        });
+      });
+    } catch (e) {
+      console.warn('attachSignaturesToTables error', e);
+    }
+  }
+
+  // Adjust the checkin modal contents: set return quantities default to original; keys editable; cards no visible quantity
+  function adjustCheckinModal(recordId) {
+    try {
+      if (!recordId) return;
+      const record = (Array.isArray(window.accessHistory) && window.accessHistory.find(r=>r.id===recordId)) || null;
+      if (!record) return;
+      // iterate record.items_returned and apply rules
+      (record.items_returned || []).forEach(item => {
+        const id = item.id;
+        const type = item.type;
+        const inputId = `return_quantity_${type}_${id}`;
+        const wrapperId = `return_item_${type}_${id}`;
+        const input = document.getElementById(inputId);
+        const wrapper = document.getElementById(wrapperId);
+        const originalQuantity = parseInt(item.quantity) || 1;
+
+        if (type === 'key') {
+          // keys: default to originalQuantity and editable (min 1, max originalQuantity)
+          if (input) {
+            input.type = 'number';
+            input.min = 1;
+            input.max = originalQuantity;
+            input.value = originalQuantity;
+          } else if (wrapper) {
+            // try to find numeric input inside wrapper
+            let num = wrapper.querySelector('input[type="number"]');
+            if (!num) {
+              num = document.createElement('input');
+              num.type = 'number';
+              num.id = inputId;
+              num.className = 'quantity-input';
+              num.min = 1;
+              num.max = originalQuantity;
+              num.value = originalQuantity;
+              // insert into return-item-status area if exists
+              const status = wrapper.querySelector('.return-item-status') || wrapper;
+              status.appendChild(num);
+            } else {
+              num.min = 1; num.max = originalQuantity; num.value = originalQuantity;
+            }
+          }
+        } else {
+          // cards: ensure no visible quantity controls; keep hidden numeric input with originalQuantity
+          if (wrapper) {
+            // remove visible controls if any
+            const qtyControl = wrapper.querySelector('.quantity-control');
+            if (qtyControl) qtyControl.remove();
+            const visibleNum = wrapper.querySelector('input[type="number"], .item-quantity, span.item-quantity');
+            if (visibleNum && visibleNum.tagName !== 'INPUT') visibleNum.remove();
+            // ensure hidden input exists
+            let hidden = document.getElementById(inputId);
+            if (!hidden) {
+              hidden = document.createElement('input');
+              hidden.type = 'hidden';
+              hidden.id = inputId;
+              wrapper.appendChild(hidden);
+            } else {
+              hidden.type = 'hidden';
+            }
+            hidden.value = originalQuantity;
+          } else {
+            let hidden = document.getElementById(inputId);
+            if (!hidden) {
+              hidden = document.createElement('input');
+              hidden.type = 'hidden';
+              hidden.id = inputId;
+              document.body.appendChild(hidden);
+            }
+            hidden.value = originalQuantity;
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('adjustCheckinModal error', e);
+    }
+  }
+
+  // Wrap showCheckinModal to call adjustCheckinModal after modal renders
+  if (typeof window.showCheckinModal === 'function') {
+    const origShow = window.showCheckinModal;
+    window.showCheckinModal = function(recordId) {
+      const res = origShow.call(this, recordId);
+      setTimeout(()=>{ try { adjustCheckinModal(recordId); } catch(e){console.warn(e);} }, 80);
+      return res;
+    };
+  }
+
+  // Wrap addItemToCheckout to ensure card items have no editable qty and to normalize UI
+  if (typeof window.addItemToCheckout === 'function') {
+    const origAdd = window.addItemToCheckout;
+    window.addItemToCheckout = function(type, item) {
+      const res = origAdd.call(this, type, item);
+      // small delay to allow DOM insertion then normalize
+      setTimeout(()=> {
+        try {
+          // find newly added item
+          const container = document.getElementById('selectedItemsList');
+          if (!container) return;
+          const el = container.querySelector(`.selected-item[data-item-id="${item.id}"][data-item-type="${type}"]`);
+          if (!el) return;
+          if (type === 'card') {
+            // remove numeric inputs and quantity-control
+            const qtyInput = el.querySelector('input[type="number"]');
+            if (qtyInput) qtyInput.remove();
+            const qc = el.querySelector('.quantity-control');
+            if (qc) qc.remove();
+            // set static quantity display '1' if not present
+            let span = el.querySelector('.item-quantity');
+            if (!span) {
+              span = document.createElement('span');
+              span.className = 'item-quantity';
+              span.textContent = '1';
+              const sec = el.querySelector('.item-quantity-section') || el;
+              sec.insertBefore(span, sec.firstChild);
+            } else {
+              span.textContent = '1';
+            }
+          } else if (type === 'key') {
+            // ensure key quantity input exists and default reflects available or 1
+            let input = el.querySelector('input[type="number"].item-quantity-input');
+            if (!input) {
+              input = el.querySelector('input[type="number"]');
+            }
+            if (input) {
+              const keyObj = (window.keys||[]).find(k=>k.id===item.id);
+              const max = keyObj ? (keyObj.quantity || 1) : 1;
+              input.min = 1; input.max = max;
+              if (!input.value || parseInt(input.value) < 1) input.value = 1;
+            }
+          }
+        } catch(e){ console.warn('post addItem normalization', e); }
+      }, 60);
+      return res;
+    };
+  }
+
+  // Run signature attachment periodically and via MutationObserver for responsiveness
+  function startSignatureAttacher() {
+    try {
+      attachSignaturesToTables();
+      // Observe body for table changes
+      const target = document.body;
+      const mo = new MutationObserver((mut)=> {
+        // debounce quick multiple mutations
+        setTimeout(attachSignaturesToTables, 40);
+      });
+      mo.observe(target, { childList: true, subtree: true, attributes: false });
+      // run a few times to catch async renders
+      let runs = 0;
+      const iv = setInterval(()=> {
+        attachSignaturesToTables();
+        runs++;
+        if (runs>50) clearInterval(iv);
+      }, 200);
+    } catch(e){ console.warn(e); }
+  }
+
+  document.addEventListener('DOMContentLoaded', startSignatureAttacher);
+  window.addEventListener('load', startSignatureAttacher);
+  // also start immediately if DOM already ready
+  setTimeout(startSignatureAttacher, 200);
+
+})();
+</script>
+<!-- END FINAL PATCH -->
+
+
+<!-- BEGIN USER REQUEST PATCH: return-quantity defaults & signature viewer -->
+<script>
+(function(){
+  if (window.__signature_return_patch_v1) return;
+  window.__signature_return_patch_v1 = true;
+
+  // Create modal for viewing signatures if not present
+  function ensureSignatureModal() {
+    if (document.getElementById('sigViewModal')) return;
+    const modalHtml = `
+      <div id="sigViewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;z-index:9999;">
+        <div style="max-width:90%;max-height:90%;background:#fff;padding:12px;border-radius:8px;overflow:auto;position:relative;">
+          <button id="sigViewClose" style="position:absolute;right:8px;top:8px;background:#111;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">Close</button>
+          <div id="sigViewContent" style="display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;"></div>
+        </div>
+      </div>`;
+    const div = document.createElement('div');
+    div.innerHTML = modalHtml;
+    document.body.appendChild(div.firstElementChild);
+    document.getElementById('sigViewClose').addEventListener('click', ()=>{ document.getElementById('sigViewModal').style.display='none'; });
+    document.getElementById('sigViewModal').addEventListener('click', function(e){ if (e.target.id === 'sigViewModal') this.style.display='none'; });
+  }
+
+  function openSignatureViewer(htmlContent) {
+    ensureSignatureModal();
+    const content = document.getElementById('sigViewContent');
+    content.innerHTML = htmlContent || '<div style="padding:20px;color:#666">No signature available</div>';
+    document.getElementById('sigViewModal').style.display = 'flex';
+  }
+
+  // Build thumbnail HTML for a record; clicking opens full viewer
+  function signatureThumbnailHTML(rec) {
+    if (!rec) return '';
+    const parts = [];
+    if (rec.signature) {
+      const t = `<div style="display:flex;flex-direction:column;align-items:center;margin-right:8px;">
+        <div style="font-size:11px;color:#444">Checkout</div>
+        <img src="${rec.signature}" alt="checkout" style="max-width:160px;max-height:80px;border:1px solid #ddd;border-radius:4px;object-fit:contain;cursor:pointer;" onclick="(function(){window.__openSigFromThumb && window.__openSigFromThumb('${rec.id}','checkout')})()"/>
+      </div>`;
+      parts.push(t);
+    }
+    if (rec.return_signature) {
+      const t2 = `<div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-size:11px;color:#444">Return</div>
+        <img src="${rec.return_signature}" alt="return" style="max-width:160px;max-height:80px;border:1px solid #ddd;border-radius:4px;object-fit:contain;cursor:pointer;" onclick="(function(){window.__openSigFromThumb && window.__openSigFromThumb('${rec.id}','return')})()"/>
+      </div>`;
+      parts.push(t2);
+    }
+    if (parts.length === 0) return '';
+    return `<div class="sig-container-inline" style="display:flex;gap:8px;align-items:center;">${parts.join('')}</div>`;
+  }
+
+  // Expose function to open signature by id and type
+  window.__openSigFromThumb = function(recordId, which) {
+    const rec = (Array.isArray(window.accessHistory) && window.accessHistory.find(r=>r.id===recordId)) || (Array.isArray(window.logs) && window.logs.find(l=>l.id===recordId));
+    if (!rec) { openSignatureViewer('<div style="padding:20px;color:#666">Record not found</div>'); return; }
+    let html = '<div style="display:flex;flex-direction:column;gap:12px;align-items:center;">';
+    if (which === 'checkout' && rec.signature) {
+      html += `<div style="font-weight:600">Checkout signature - ${rec.id}</div><img src="${rec.signature}" style="max-width:92vw;max-height:76vh;border:1px solid #ccc;border-radius:6px;object-fit:contain;" />`;
+    } else if (which === 'return' && rec.return_signature) {
+      html += `<div style="font-weight:600">Return signature - ${rec.id}</div><img src="${rec.return_signature}" style="max-width:92vw;max-height:76vh;border:1px solid #ccc;border-radius:6px;object-fit:contain;" />`;
+    } else {
+      // show both if available
+      if (rec.signature) html += `<div style="font-weight:600">Checkout signature - ${rec.id}</div><img src="${rec.signature}" style="max-width:92vw;max-height:40vh;border:1px solid #ccc;border-radius:6px;object-fit:contain;" />`;
+      if (rec.return_signature) html += `<div style="font-weight:600">Return signature - ${rec.id}</div><img src="${rec.return_signature}" style="max-width:92vw;max-height:40vh;border:1px solid #ccc;border-radius:6px;object-fit:contain;" />`;
+    }
+    html += '</div>';
+    openSignatureViewer(html);
+  };
+
+  // Attach signature thumbnails to table rows (improve heuristic)
+  function attachSignaturesToTablesImproved() {
+    try {
+      const tbodies = document.querySelectorAll('table tbody');
+      tbodies.forEach(tbody => {
+        tbody.querySelectorAll('tr').forEach(tr => {
+          if (tr.dataset.sigPatched) return;
+          // find possible record id in row
+          let cells = tr.querySelectorAll('td');
+          if (!cells || cells.length === 0) { tr.dataset.sigPatched = '0'; return; }
+          const text = tr.textContent || '';
+          let found = null;
+          if (Array.isArray(window.accessHistory)) {
+            for (const r of window.accessHistory) {
+              if (!r || !r.id) continue;
+              if (text.includes(r.id)) { found = r; break; }
+            }
+          }
+          if (!found && Array.isArray(window.logs)) {
+            for (const l of window.logs) {
+              if (!l || !l.id) continue;
+              if (text.includes(l.id)) { found = l; break; }
+            }
+          }
+          if (!found) { tr.dataset.sigPatched='0'; return; }
+          const thumb = signatureThumbnailHTML(found);
+          if (!thumb) { tr.dataset.sigPatched='0'; return; }
+          // append thumb into a new cell at end, or into last cell if small screen
+          let targetCell = cells[cells.length-1];
+          // create wrapper to keep layout consistent
+          const wrapper = document.createElement('div');
+          wrapper.style.marginTop = '6px';
+          wrapper.innerHTML = thumb;
+          // avoid duplicated
+          if (!targetCell.querySelector('.sig-container-inline')) {
+            targetCell.appendChild(wrapper);
+          }
+          tr.dataset.sigPatched='1';
+        });
+      });
+    } catch (e) {
+      console.warn('attachSignaturesImproved error', e);
+    }
+  }
+
+  // Adjust checkin modal: set default quantities for returning items
+  function adjustCheckinModalFinal(recordId) {
+    try {
+      if (!recordId) return;
+      const record = (Array.isArray(window.accessHistory) && window.accessHistory.find(r=>r.id===recordId)) || null;
+      if (!record) return;
+      (record.items_returned || []).forEach(item => {
+        const inputId = `return_quantity_${item.type}_${item.id}`;
+        const wrapperId = `return_item_${item.type}_${item.id}`;
+        const wrapper = document.getElementById(wrapperId);
+        // original issued number is item.quantity
+        const originalQuantity = parseInt(item.quantity) || 1;
+        if (item.type === 'key') {
+          // find existing numeric input; if none, create one in the status area
+          let input = document.getElementById(inputId);
+          if (!input && wrapper) {
+            input = wrapper.querySelector('input[type="number"]');
+            if (!input) {
+              const status = wrapper.querySelector('.return-item-status') || wrapper;
+              input = document.createElement('input');
+              input.type = 'number';
+              input.id = inputId;
+              input.className = 'quantity-input';
+              input.min = 1;
+              input.max = originalQuantity;
+              input.value = originalQuantity;
+              status.appendChild(input);
+            } else {
+              input.id = inputId;
+            }
+          }
+          if (input) {
+            input.min = 1; input.max = originalQuantity; input.value = originalQuantity;
+          }
+        } else {
+          // card: remove visible controls and ensure hidden input equals originalQuantity
+          if (wrapper) {
+            const qc = wrapper.querySelector('.quantity-control');
+            if (qc) qc.remove();
+            const visible = wrapper.querySelector('.item-quantity, input[type="number"]');
+            if (visible && visible.tagName !== 'INPUT') visible.remove();
+            let hidden = document.getElementById(inputId);
+            if (!hidden) {
+              hidden = document.createElement('input');
+              hidden.type = 'hidden';
+              hidden.id = inputId;
+              wrapper.appendChild(hidden);
+            } else {
+              hidden.type = 'hidden';
+            }
+            hidden.value = originalQuantity;
+          } else {
+            let hidden = document.getElementById(inputId);
+            if (!hidden) {
+              hidden = document.createElement('input');
+              hidden.type = 'hidden';
+              hidden.id = inputId;
+              document.body.appendChild(hidden);
+            }
+            hidden.value = originalQuantity;
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('adjustCheckinModalFinal error', e);
+    }
+  }
+
+  // Wrap showCheckinModal
+  if (typeof window.showCheckinModal === 'function') {
+    const orig = window.showCheckinModal;
+    window.showCheckinModal = function(recordId) {
+      const res = orig.call(this, recordId);
+      setTimeout(()=>{ try { adjustCheckinModalFinal(recordId); } catch(e){ console.warn(e); } }, 80);
+      return res;
+    };
+  }
+
+  // Wrap addItemToCheckout to normalize card vs key UI on selection
+  if (typeof window.addItemToCheckout === 'function') {
+    const orig = window.addItemToCheckout;
+    window.addItemToCheckout = function(type, item) {
+      const res = orig.call(this, type, item);
+      setTimeout(()=>{
+        try {
+          const container = document.getElementById('selectedItemsList');
+          if (!container) return;
+          const el = container.querySelector(`.selected-item[data-item-id="${item.id}"][data-item-type="${type}"]`);
+          if (!el) return;
+          if (type === 'card') {
+            // remove quantity input/control, show static '1'
+            const num = el.querySelector('input[type="number"]');
+            if (num) num.remove();
+            const qc = el.querySelector('.quantity-control');
+            if (qc) qc.remove();
+            let span = el.querySelector('.item-quantity');
+            if (!span) {
+              span = document.createElement('span');
+              span.className = 'item-quantity';
+              span.textContent = '1';
+              const sec = el.querySelector('.item-quantity-section') || el;
+              sec.insertBefore(span, sec.firstChild);
+            } else { span.textContent = '1'; }
+          } else if (type === 'key') {
+            // ensure quantity input exists and defaults to available or 1
+            let input = el.querySelector('input[type="number"].item-quantity-input') || el.querySelector('input[type="number"]');
+            const keyObj = (window.keys||[]).find(k=>k.id===item.id);
+            const max = keyObj ? (keyObj.quantity || 1) : 1;
+            if (input) { input.min=1; input.max=max; if(!input.value||parseInt(input.value)<1) input.value = Math.min(1, max); }
+          }
+        } catch(e){ console.warn('normalize after addItem', e); }
+      }, 60);
+      return res;
+    };
+  }
+
+  // Start attachment process
+  function start() {
+    ensureSignatureModal();
+    attachSignaturesToTablesImproved();
+    // observe for table changes
+    const mo = new MutationObserver(()=>{ setTimeout(attachSignaturesToTablesImproved, 50); });
+    mo.observe(document.body, { childList:true, subtree:true });
+    // periodic tries (catch lazy renders)
+    let tries=0;
+    const iv = setInterval(()=>{ attachSignaturesToTablesImproved(); tries++; if(tries>50) clearInterval(iv); }, 300);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+
+})(); 
+</script>
+<!-- END USER REQUEST PATCH -->
+
 </body>
 </html>
