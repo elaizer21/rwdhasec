@@ -5723,5 +5723,161 @@ if (modalContent) {
 </script>
 <!-- END USER REQUEST PATCH -->
 
+
+<!-- BEGIN SIGNATURE ACCESSOR PATCH -->
+<script>
+(function(){
+  if (window.__sig_accessor_installed) return;
+  window.__sig_accessor_installed = true;
+
+  // Create modal for viewing/downloading signatures
+  function createSigModal() {
+    if (document.getElementById('sigManagerModal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'sigManagerModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;z-index:99999;padding:20px;';
+    modal.innerHTML = `
+      <div style="background:#fff;max-width:980px;width:100%;max-height:90vh;border-radius:8px;overflow:auto;position:relative;padding:16px;">
+        <button id="sigManagerClose" style="position:absolute;right:12px;top:12px;border:none;background:#222;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;">Close</button>
+        <h3 id="sigManagerTitle" style="margin:0 0 12px 0;font-size:18px;">Signatures</h3>
+        <div id="sigManagerContent" style="display:flex;flex-direction:column;gap:12px;"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('sigManagerClose').addEventListener('click', ()=> modal.style.display='none');
+    modal.addEventListener('click', (e)=> { if (e.target.id === 'sigManagerModal') modal.style.display='none'; });
+  }
+
+  function openSigManager(recordId) {
+    createSigModal();
+    const modal = document.getElementById('sigManagerModal');
+    const content = document.getElementById('sigManagerContent');
+    content.innerHTML = '<div style="color:#666;padding:16px">Loading...</div>';
+    // find record in accessHistory or logs
+    let rec = null;
+    if (Array.isArray(window.accessHistory)) rec = window.accessHistory.find(r=>r.id===recordId);
+    if (!rec && Array.isArray(window.logs)) rec = window.logs.find(l=>l.id===recordId);
+    if (!rec) {
+      content.innerHTML = `<div style="color:#b00">Record ${recordId} not found</div>`;
+      document.getElementById('sigManagerTitle').textContent = `Signatures - ${recordId}`;
+      modal.style.display='flex';
+      return;
+    }
+    // Build content: show metadata and signatures if available
+    let parts = `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;"><div><strong>Record:</strong> ${rec.id}</div>`;
+    if (rec.name) parts += `<div><strong>Name:</strong> ${rec.name}</div>`;
+    if (rec.employee_id) parts += `<div><strong>Emp ID:</strong> ${rec.employee_id}</div>`;
+    parts += `</div><div style="height:8px;"></div>`;
+    const sigs = [];
+    if (rec.signature) sigs.push({label:'Checkout', data: rec.signature});
+    if (rec.return_signature) sigs.push({label:'Return', data: rec.return_signature});
+    if (sigs.length === 0) {
+      parts += `<div style="color:#666">No signatures captured for this record.</div>`;
+    } else {
+      parts += `<div style="display:flex;flex-direction:column;gap:12px">`;
+      sigs.forEach(s => {
+        // build image and download link
+        const idSafe = recordId + '_' + s.label;
+        parts += `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <div style="display:flex;flex-direction:column;align-items:center;">
+                      <div style="font-size:12px;color:#333;margin-bottom:6px"><strong>${s.label}</strong></div>
+                      <img src="${s.data}" alt="${s.label}" style="max-width:560px;max-height:320px;border:1px solid #ddd;border-radius:6px;object-fit:contain;"/>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                      <a href="${s.data}" download="${recordId}_${s.label}.png" style="background:#007bff;color:#fff;padding:8px 10px;border-radius:6px;text-decoration:none;display:inline-block">Download ${s.label}</a>
+                      <button id="openNew_${idSafe}" style="background:#555;color:#fff;padding:8px 10px;border-radius:6px;border:none;cursor:pointer;">Open in new tab</button>
+                    </div>
+                  </div>`;
+      });
+      parts += `</div>`;
+    }
+    content.innerHTML = parts;
+    // attach open in new tab handlers
+    sigs.forEach(s => {
+      const idSafe = recordId + '_' + s.label;
+      const btn = document.getElementById('openNew_' + idSafe);
+      if (btn) btn.addEventListener('click', ()=> {
+        const w = window.open();
+        w.document.write(`<title>${recordId} - ${s.label}</title><img src="${s.data}" style="max-width:100%;height:auto;display:block;margin:10px auto"/>`);
+        w.document.close();
+      });
+    });
+    document.getElementById('sigManagerTitle').textContent = `Signatures - ${recordId}`;
+    modal.style.display='flex';
+  }
+
+  // Inject "View Signatures" button into table rows for easy access
+  function injectViewButtons() {
+    try {
+      const tbodies = document.querySelectorAll('table tbody');
+      tbodies.forEach(tbody => {
+        tbody.querySelectorAll('tr').forEach(tr => {
+          if (tr.dataset.sigButtonInjected) return;
+          const cells = tr.querySelectorAll('td');
+          if (!cells || cells.length === 0) { tr.dataset.sigButtonInjected='0'; return; }
+          // heuristic: try to find a record id in the row by matching accessHistory or logs ids
+          const txt = tr.textContent || '';
+          let recordId = null;
+          if (Array.isArray(window.accessHistory)) {
+            for (const r of window.accessHistory) {
+              if (!r || !r.id) continue;
+              if (txt.includes(r.id)) { recordId = r.id; break; }
+            }
+          }
+          if (!recordId && Array.isArray(window.logs)) {
+            for (const l of window.logs) {
+              if (!l || !l.id) continue;
+              if (txt.includes(l.id)) { recordId = l.id; break; }
+            }
+          }
+          if (!recordId) { tr.dataset.sigButtonInjected='0'; return; }
+          // append button into last cell
+          const last = cells[cells.length-1];
+          const container = document.createElement('div');
+          container.style.display = 'flex';
+          container.style.gap = '6px';
+          container.style.alignItems = 'center';
+          const rec = (Array.isArray(window.accessHistory) && window.accessHistory.find(r=>r.id===recordId)) || (Array.isArray(window.logs) && window.logs.find(l=>l.id===recordId));
+          const btn = document.createElement('button');
+          btn.textContent = 'View Signatures';
+          btn.style.background = rec && (rec.signature || rec.return_signature) ? '#0b6' : '#888';
+          btn.style.border = 'none';
+          btn.style.padding = '6px 8px';
+          btn.style.color = '#fff';
+          btn.style.borderRadius = '6px';
+          btn.style.cursor = 'pointer';
+          btn.title = rec && (rec.signature || rec.return_signature) ? 'View captured signatures' : 'No signatures captured yet - click to open viewer';
+          btn.addEventListener('click', (e)=>{ e.stopPropagation(); openSigManager(recordId); });
+          container.appendChild(btn);
+          last.appendChild(container);
+          tr.dataset.sigButtonInjected='1';
+        });
+      });
+    } catch (e) {
+      console.warn('injectViewButtons error', e);
+    }
+  }
+
+  // Start injection and observe
+  function startInjector() {
+    injectViewButtons();
+    const mo = new MutationObserver(()=>{ setTimeout(injectViewButtons, 60); });
+    mo.observe(document.body, { childList:true, subtree:true });
+    let runs = 0;
+    const iv = setInterval(()=>{ injectViewButtons(); runs++; if (runs>50) clearInterval(iv); }, 250);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startInjector);
+  } else {
+    startInjector();
+  }
+
+  // Expose function for manual opening
+  window.openSignatureManager = openSigManager;
+
+})(); 
+</script>
+<!-- END SIGNATURE ACCESSOR PATCH -->
+
 </body>
 </html>
