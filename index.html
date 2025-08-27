@@ -1709,7 +1709,20 @@
             </div>
           </div>
           
+          
+          <!-- Signature Section: Topaz T-L-460 (Checkout) -->
           <div class="form-section">
+            <h3 class="form-section-title"><i class="fa-solid fa-pen-fancy"></i> Signature (Topaz T-L-460)</h3>
+            <div class="form-section" style="background:white;">
+              <canvas id="sigCanvasCheckout" width="600" height="160" style="border:1px solid #e2e8f0;border-radius:8px;display:block;margin-bottom:0.5rem;"></canvas>
+              <div style="display:flex;gap:0.5rem;">
+                <button type="button" id="sigStartCheckout" class="rw-btn">Start Pad</button>
+                <button type="button" id="sigClearCheckout" class="rw-btn">Clear</button>
+                <span id="sigStatusCheckout" style="margin-left:12px;color:#0a1433;font-weight:600;"></span>
+              </div>
+            </div>
+          </div>
+<div class="form-section">
             <h3 class="form-section-title"><i class="fa-solid fa-user-check"></i> Issuer Information</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="form-group">
@@ -3275,7 +3288,18 @@ function showCheckinModal(recordId) {
         <!-- Fields will be dynamically shown when same person is unchecked -->
       </div>
       
+      
+      <!-- Signature Section: Topaz T-L-460 (Check-in - Returned By) -->
       <div class="form-group">
+        <label class="required">Returned By - Signature</label>
+        <canvas id="sigCanvasReturned" width="500" height="140" style="border:1px solid #e2e8f0;border-radius:8px;display:block;margin-bottom:0.5rem;"></canvas>
+        <div style="display:flex;gap:0.5rem;">
+          <button type="button" id="sigStartReturned" class="rw-btn">Start Pad</button>
+          <button type="button" id="sigClearReturned" class="rw-btn">Clear</button>
+          <span id="sigStatusReturned" style="margin-left:12px;color:#0a1433;font-weight:600;"></span>
+        </div>
+      </div>
+<div class="form-group">
         <label for="receivedBy" class="required">Received By</label>
         <input type="text" id="receivedBy" class="form-input" placeholder="Name of the receiver" required>
       </div>
@@ -4654,6 +4678,261 @@ window.onload = function() {
     });
   }
 };
+</script>
+
+<script>
+// --- Topaz SigWeb + Canvas fallback common helpers ---
+async function getSigWebImageB64(width, height) {
+  try {
+    if (typeof SigWebTablet !== 'undefined' && SigWebTablet.GetSigImageB64) {
+      const maybe = SigWebTablet.GetSigImageB64(width, height, false);
+      const b64 = (maybe instanceof Promise) ? await maybe : maybe;
+      if (b64 && b64.length > 0) return b64;
+    }
+  } catch (e) { console.warn('SigWeb error', e); }
+  return null;
+}
+
+function bindCanvasDrawing(canvas) {
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  let drawing = false;
+  let last = null;
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches) {
+      const t = e.touches[0];
+      return [t.clientX - rect.left, t.clientY - rect.top];
+    }
+    return [e.clientX - rect.left, e.clientY - rect.top];
+  }
+
+  canvas.addEventListener('pointerdown', (e)=>{ drawing = true; last = getPos(e); });
+  window.addEventListener('pointerup', ()=>{ drawing = false; last = null; });
+  canvas.addEventListener('pointermove', (e)=>{
+    if (!drawing) return;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(last[0], last[1]);
+    ctx.lineTo(pos[0], pos[1]);
+    ctx.strokeStyle = '#0a1433';
+    ctx.stroke();
+    last = pos;
+  });
+  return ctx;
+}
+
+// Initialize checkout signature controls
+function initCheckoutSigPad() {
+  const canvas = document.getElementById('sigCanvasCheckout');
+  if (!canvas) return;
+  const ctx = bindCanvasDrawing(canvas);
+
+  document.getElementById('sigClearCheckout').addEventListener('click', ()=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  });
+
+  document.getElementById('sigStartCheckout').addEventListener('click', async ()=>{
+    const status = document.getElementById('sigStatusCheckout');
+    if (typeof SigWebTablet !== 'undefined') {
+      try {
+        await SigWebTablet.StartTablet();
+        status.textContent = 'Pad started. Sign on the T-L460.';
+        // draw live preview loop
+        (async function renderLoop(){
+          try {
+            const b64 = await getSigWebImageB64(600,160);
+            if (b64) {
+              const img = new Image();
+              img.onload = ()=>{
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              };
+              img.src = 'data:image/png;base64,' + b64;
+            }
+          } catch(e){ console.warn(e); }
+          if (status.textContent.startsWith('Pad started')) requestAnimationFrame(renderLoop);
+        })();
+      } catch (e) {
+        status.textContent = 'Failed to start SigWeb. Use canvas fallback.';
+        console.warn(e);
+      }
+    } else {
+      status.textContent = 'SigWeb not detected. Use canvas fallback (draw on canvas).';
+    }
+  });
+}
+
+// Initialize returned signature controls (in modal) - call this after modal HTML is inserted
+function initReturnedSigPad() {
+  const canvas = document.getElementById('sigCanvasReturned');
+  if (!canvas) return;
+  const ctx = bindCanvasDrawing(canvas);
+
+  document.getElementById('sigClearReturned').addEventListener('click', ()=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  });
+
+  document.getElementById('sigStartReturned').addEventListener('click', async ()=>{
+    const status = document.getElementById('sigStatusReturned');
+    if (typeof SigWebTablet !== 'undefined') {
+      try {
+        await SigWebTablet.StartTablet();
+        status.textContent = 'Pad started. Sign on the T-L460.';
+        (async function renderLoop(){
+          try {
+            const b64 = await getSigWebImageB64(500,140);
+            if (b64) {
+              const img = new Image();
+              img.onload = ()=>{
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              };
+              img.src = 'data:image/png;base64,' + b64;
+            }
+          } catch(e){ console.warn(e); }
+          if (status.textContent.startsWith('Pad started')) requestAnimationFrame(renderLoop);
+        })();
+      } catch (e) {
+        status.textContent = 'Failed to start SigWeb. Use canvas fallback.';
+        console.warn(e);
+      }
+    } else {
+      status.textContent = 'SigWeb not detected. Use canvas fallback (draw on canvas).';
+    }
+  });
+}
+
+// Generic function to get signature DataURL for checkout or returned signature
+async function captureSignatureDataUrl(mode='checkout') {
+  // mode: 'checkout' uses sigCanvasCheckout, 'returned' uses sigCanvasReturned
+  const canvasId = mode === 'checkout' ? 'sigCanvasCheckout' : 'sigCanvasReturned';
+  const canvas = document.getElementById(canvasId);
+  // Try SigWeb first
+  try {
+    const width = canvas ? canvas.width : 500;
+    const height = canvas ? canvas.height : 160;
+    const b64 = await getSigWebImageB64(width, height);
+    if (b64) return 'data:image/png;base64,' + b64;
+  } catch(e){ console.warn(e); }
+  // Fallback to canvas content
+  if (canvas) return canvas.toDataURL('image/png');
+  return null;
+}
+
+// --- Modify existing handlers to capture signature ---
+// 1) handleCheckOut: make async and capture signature before pushing to accessHistory
+if (typeof handleCheckOut === 'function') {
+  // Replace existing function by wrapping - safer than editing many lines
+  const originalHandleCheckOut = handleCheckOut;
+  window.handleCheckOut = async function(e) {
+    // Execute original to construct data - but original prevents default and reads form.
+    // We'll re-implement key parts to ensure signature is attached correctly.
+    // To avoid duplication errors, we will call original but then attach signature to last pushed record.
+    const res = originalHandleCheckOut(e);
+    // originalHandleCheckOut already pushed record to accessHistory and saved localStorage
+    // Wait briefly to ensure record persisted, then attach signature to the most recent record
+    await new Promise(r=>setTimeout(r, 150));
+    try {
+      const sig = await captureSignatureDataUrl('checkout');
+      if (sig) {
+        // attach to last accessHistory entry
+        const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
+        if (history.length>0) {
+          history[history.length-1].signature = sig;
+          localStorage.setItem('accessHistory', JSON.stringify(history));
+        }
+      }
+    } catch(e){ console.warn('Failed to capture checkout signature', e); }
+    return res;
+  };
+} else {
+  // If original not loaded yet, define a wrapper after DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if (typeof handleCheckOut === 'function') {
+      const originalHandleCheckOut = handleCheckOut;
+      window.handleCheckOut = async function(e) {
+        const res = originalHandleCheckOut(e);
+        await new Promise(r=>setTimeout(r, 150));
+        try {
+          const sig = await captureSignatureDataUrl('checkout');
+          if (sig) {
+            const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
+            if (history.length>0) {
+              history[history.length-1].signature = sig;
+              localStorage.setItem('accessHistory', JSON.stringify(history));
+            }
+          }
+        } catch(e){ console.warn('Failed to capture checkout signature', e); }
+        return res;
+      };
+    }
+  });
+}
+
+// 2) handleCheckinSubmit: make async by wrapping so we capture returned signature before finalizing
+if (typeof handleCheckinSubmit === 'function') {
+  const originalHandleCheckin = handleCheckinSubmit;
+  window.handleCheckinSubmit = async function(recordId) {
+    // Capture returned signature first (if present in DOM)
+    try {
+      const sig = await captureSignatureDataUrl('returned');
+      if (sig) {
+        // Attach to the record in accessHistory before original runs
+        const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
+        const idx = history.findIndex(r=>r.id===recordId);
+        if (idx>=0) {
+          history[idx].returned_signature = sig;
+          localStorage.setItem('accessHistory', JSON.stringify(history));
+        }
+      }
+    } catch(e){ console.warn('Failed to capture returned signature', e); }
+    // Now call original function to process quantities and save
+    return originalHandleCheckin(recordId);
+  };
+} else {
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if (typeof handleCheckinSubmit === 'function') {
+      const originalHandleCheckin = handleCheckinSubmit;
+      window.handleCheckinSubmit = async function(recordId) {
+        try {
+          const sig = await captureSignatureDataUrl('returned');
+          if (sig) {
+            const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
+            const idx = history.findIndex(r=>r.id===recordId);
+            if (idx>=0) {
+              history[idx].returned_signature = sig;
+              localStorage.setItem('accessHistory', JSON.stringify(history));
+            }
+          }
+        } catch(e){ console.warn('Failed to capture returned signature', e); }
+        return originalHandleCheckin(recordId);
+      };
+    }
+  });
+}
+
+// Initialize pads on DOM load
+document.addEventListener('DOMContentLoaded', ()=>{
+  initCheckoutSigPad();
+  // Returned signature pad for modal will be initialized after modal HTML is inserted.
+});
+
+// Also initialize returned pad whenever modal content is changed - observe modalContent container
+const modalContent = document.getElementById('modalContent');
+if (modalContent) {
+  const observer = new MutationObserver((mutations)=>{
+    for (const m of mutations) {
+      if (m.type === 'childList' && m.addedNodes.length>0) {
+        // Initialize returned pad if present
+        setTimeout(()=>{ initReturnedSigPad(); }, 50);
+      }
+    }
+  });
+  observer.observe(modalContent, { childList: true, subtree: false });
+}
 </script>
 </body>
 </html>
