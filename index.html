@@ -1603,8 +1603,9 @@
                       <th>ID</th>
                       <th>Phone</th>
                       <th>Item</th>
-                      <th>Time Taken</th>
-                      <th>Status</th>
+                      <th>Time Taken</th><th>Check Out Signature</th>
+<th>Check In Signature</th>
+<th>Status</th>
                     </tr>
                   </thead>
                   <tbody id="overdueItemsList">
@@ -1629,8 +1630,9 @@
                       <th>Employee</th>
                       <th>Phone</th>
                       <th>Item</th>
-                      <th>Time</th>
-                    </tr>
+                      <th>Time</th><th>Check Out Signature</th>
+<th>Check In Signature</th>
+</tr>
                   </thead>
                   <tbody id="recentActivityList">
                     <tr><td colspan="5">Loading recent activity...</td></tr>
@@ -1834,8 +1836,9 @@
                     <th>Employee</th>
                     <th>Phone</th>
                     <th>Items</th>
-                    <th>Time Taken</th>
-                    <th>Status</th>
+                    <th>Time Taken</th><th>Check Out Signature</th>
+<th>Check In Signature</th>
+<th>Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -1878,7 +1881,9 @@
             <div class="scroll-table"><table class="w-full text-xs">
               <thead>
                 <tr class="table-head">
-                  <th>Key Number</th><th>Room Description</th><th>Issued To</th><th>Issued By</th><th>Time Taken</th><th>Status</th><th>Returned By</th><th>Received By</th><th>Time Brought</th><th>Remarks</th>
+                  <th>Key Number</th><th>Room Description</th><th>Issued To</th><th>Issued By</th><th>Time Taken</th><th>Check Out Signature</th>
+<th>Check In Signature</th>
+<th>Status</th><th>Returned By</th><th>Received By</th><th>Time Brought</th><th>Remarks</th>
                 </tr>
               </thead>
               <tbody id="reportTable"></tbody>
@@ -2720,8 +2725,9 @@ function showDetailModal(type) {
           <th>Employee #</th><th>Name</th><th>Phone</th>
           <th>Key Taken</th><th>Card Taken</th>
           <th>Activity</th>
-          <th>Time</th>
-          <th>Issued By</th>
+          <th>Time</th><th>Check Out Signature</th>
+<th>Check In Signature</th>
+<th>Issued By</th>
         </tr></thead>
         <tbody id="modalLogTable">
         ${logs.map(l=>{
@@ -2732,8 +2738,9 @@ function showDetailModal(type) {
             <td>${l.key_taken||''}</td>
             <td>${l.access_card_taken||''}</td>
             <td>${l.type === 'checkout' ? 'Check In' : 'Check Out'}</td>
-            <td>${new Date(l.time).toLocaleString()}</td>
-            <td>${l.issued_by||''}</td>
+            <td>${new Date(l.time).toLocaleString()}</td><td></td>
+<td></td>
+<td>${l.issued_by||''}</td>
           </tr>`;
         }).reverse().join('')}
         </tbody></table></div>
@@ -2800,8 +2807,9 @@ function showDetailModal(type) {
                 <th>Description</th>
                 <th>Employee</th>
                 <th>Department</th>
-                <th>Time Taken</th>
-                <th>Status</th>
+                <th>Time Taken</th><th>Check Out Signature</th>
+<th>Check In Signature</th>
+<th>Status</th>
               </tr>
             </thead>
             <tbody id="modalTakenTable">
