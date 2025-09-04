@@ -1415,6 +1415,52 @@
 })();
 </script>
 
+
+  <!-- USER PATCH: make specified section headers dark blue for improved visibility -->
+  <style>
+    :root { --user-dark-blue: #0a1433; }
+
+    /* Target management section headings and common header elements used in:
+       - Activity / Recent Activity
+       - Employee Records
+       - Keys Inventory
+       - Access Card Inventory
+       - Currently Taken / Currently Out modal
+       - Check-in List
+    */
+    .management-table-header,
+    .management-table-header i,
+    .collapsible-header h3,
+    .overview-card .collapsible-header h3,
+    .modal-title,
+    .modal-subtitle,
+    .items-section-header,
+    .form-section-title,
+    .report-header,
+    .report-subtitle,
+    .modal-grid-title {
+      color: var(--user-dark-blue) !important;
+    }
+
+    /* Ensure table header rows inside those pages use a light background to keep contrast */
+    #page-checkin .table-head,
+    #page-report .table-head,
+    #page-checkout .table-head,
+    .overview-card .table-head,
+    table thead tr.table-head {
+      background: transparent !important;
+      color: var(--user-dark-blue) !important;
+    }
+
+    /* Also ensure small header-like labels inside modals and cards show the dark blue */
+    .dashboard-label,
+    .dashboard-card-title,
+    .modal-grid-footer,
+    .management-table-header .fa-solid {
+      color: var(--user-dark-blue) !important;
+    }
+  </style>
+
 </head>
 <body>
 <div id="toast"></div>
