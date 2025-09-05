@@ -6,11 +6,241 @@
   <title>Rosewood Key & Access Card Inventory</title>
   <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiUm9zZXdvb2QgS2V5ICYgQWNjZXNzIENhcmQgSW52ZW50b3J5Iiwic2hvcnRfbmFtZSI6IktleSBJbnZlbnRvcnkiLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJ0aGVtZV9jb2xvciI6IiMwYTE0MzMiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzBhMTQzMyIsImljb25zIjpbeyJzcmMiOiJodHRwczovL2F2YXRhcnMuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3UvOTk0MTQ2Nj92PTQiLCJzaXplcyI6IjE5MngxOTIiLCJ0eXBlIjoiaW1hZ2UvcG5nIn1dfQ==">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.2/css/all.min.css">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.tailwindcss.com">
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js">
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js">
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
+</script>
   <style>
     :root {
       --deep-blue: #0a1433;
@@ -1394,7 +1624,20 @@
       background-color: #be123c;
       border-color: #be123c;
     }
-  </style>
+  
+/* USER FIX: Responsive signatures and tables to auto-fit screens */
+table { width: 100% !important; }
+table img { max-width: 100% !important; height: auto !important; display: block; }
+.sig-container img, .sig-thumb img { max-width: 120px; width: 100%; height: auto; object-fit: contain; }
+.modal-table-container { overflow-x: auto; }
+.table-container { overflow-x: auto; }
+@media (max-width: 900px) {
+  table thead tr.table-head th, table tbody td { font-size: 0.78rem; padding: 0.35rem 0.45rem; }
+  .modal-grid { grid-template-columns: 1fr; }
+  .modal { padding: 0.5rem; }
+}
+
+</style>
 
 <script>
 (function(){
@@ -1413,6 +1656,52 @@
     return html ? `<div class="sig-container" style="display:flex;gap:8px;align-items:center;">${html}</div>` : '';
   };
 })();
+
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
 </script>
 
 
@@ -1604,12 +1893,11 @@
                       <th>Phone</th>
                       <th>Item</th>
                       <th>Time Taken</th><th>Check Out Signature</th>
-<th>Check In Signature</th>
 <th>Status</th>
                     </tr>
                   </thead>
                   <tbody id="overdueItemsList">
-                    <tr><td colspan="6">Loading overdue items...</td></tr>
+                    <tr><td colspan="7">Loading overdue items...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1626,16 +1914,22 @@
                 <table>
                   <thead>
                     <tr class="table-head">
-                      <th>Activity</th>
-                      <th>Employee</th>
-                      <th>Phone</th>
-                      <th>Item</th>
-                      <th>Time</th><th>Check Out Signature</th>
-<th>Check In Signature</th>
+                      <th>Key Number</th>
+                      <th>Room Description</th>
+                      <th>Issued To</th>
+                      <th>Issued By</th>
+                      <th>Check Out Signature</th>
+                      <th>Time Taken</th>
+                      <th>Status</th>
+                      <th>Returned By</th>
+                      <th>Received By</th>
+                      <th>Check In Signature</th>
+                      <th>Time Brought</th>
+                      <th>Remarks</th>
 </tr>
                   </thead>
                   <tbody id="recentActivityList">
-                    <tr><td colspan="5">Loading recent activity...</td></tr>
+                    <tr><td colspan="12">Loading recent activity...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1837,7 +2131,6 @@
                     <th>Phone</th>
                     <th>Items</th>
                     <th>Time Taken</th><th>Check Out Signature</th>
-<th>Check In Signature</th>
 <th>Status</th>
                     <th>Action</th>
                   </tr>
@@ -1879,11 +2172,20 @@
           </div>
           <div class="table-container">
             <div class="scroll-table"><table class="w-full text-xs">
-              <thead>
+                <thead>
                 <tr class="table-head">
-                  <th>Key Number</th><th>Room Description</th><th>Issued To</th><th>Issued By</th><th>Time Taken</th><th>Check Out Signature</th>
-<th>Check In Signature</th>
-<th>Status</th><th>Returned By</th><th>Received By</th><th>Time Brought</th><th>Remarks</th>
+                  <th>Key Number</th>
+                  <th>Room Description</th>
+                  <th>Issued To</th>
+                  <th>Issued By</th>
+                  <th>Check Out Signature</th>
+                  <th>Time Taken</th>
+                  <th>Status</th>
+                  <th>Returned By</th>
+                  <th>Received By</th>
+                  <th>Check In Signature</th>
+                  <th>Time Brought</th>
+                  <th>Remarks</th>
                 </tr>
               </thead>
               <tbody id="reportTable"></tbody>
@@ -2370,7 +2672,7 @@ function handleLogin(e) {
   e.preventDefault();
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value.trim();
-  if (username === 'RWDHA' && password === 'rwdha@2025') {
+  if (username === 'RWDHA' && password === 'rwdha21') {
     document.getElementById('loginPage').classList.add('hide');
     document.getElementById('mainApp').classList.remove('hide');
     document.getElementById('currentUser').textContent = username;
@@ -2808,7 +3110,6 @@ function showDetailModal(type) {
                 <th>Employee</th>
                 <th>Department</th>
                 <th>Time Taken</th><th>Check Out Signature</th>
-<th>Check In Signature</th>
 <th>Status</th>
               </tr>
             </thead>
@@ -2826,7 +3127,12 @@ function showDetailModal(type) {
                   <td>${item.employeeName} (${item.employeeId})</td>
                   <td>${item.department || ''}</td>
                   <td>${item.timeTaken}</td>
-                  <td>${item.overdue ? '<span class="status-badge status-overdue status-badge-enhanced">OVERDUE</span>' : '<span class="status-badge status-taken status-badge-enhanced">TAKEN</span>'}</td>
+                  <td>${ (function(){
+                    // attempt to find the original record for signature display
+                    const rec = accessHistory.find(r=>r.id===item.recordId)||{};
+                    return renderSignaturesForRecord(rec) || '';
+                  })()}</td>
+                  <td>${ item.overdue ? '<span class="status-badge status-overdue status-badge-enhanced">OVERDUE</span>' : '<span class="status-badge status-taken status-badge-enhanced">TAKEN</span>' }</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -3300,9 +3606,10 @@ function renderCheckinTable() {
       <td>${record.phone}</td>
       <td>${itemDetails}</td>
       <td>${record.time_taken}</td>
+      <td>${record.signature ? `<img src="${record.signature}" alt="checkout-pic" style="width:140px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #ddd;"/>` : ''}</td>
       <td>${status}</td>
       <td><button class="rw-btn px-2 py-1 rounded text-xs" onclick="showCheckinModal('${record.id}')">Return Items</button></td>
-    \n      ${renderSignaturesForRecord(record) || ''}`;
+    `;
     tbody.appendChild(tr);
   });
 }
@@ -4640,7 +4947,7 @@ function importCards(files) {
 // --- Password Protected Actions ---
 function confirmAction(callback) {
   const password = prompt('Enter password to proceed:');
-  if (password === 'rwdha@2025') {
+  if (password === 'rwdha21') {
     callback();
   } else {
     showToast('Incorrect password. Action aborted.');
@@ -4752,6 +5059,52 @@ window.onload = function() {
     });
   }
 };
+
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
 </script>
 
 <script>
@@ -4894,6 +5247,91 @@ async function captureSignatureDataUrl(mode='checkout') {
   // Fallback to canvas content
   if (canvas) return canvas.toDataURL('image/png');
   return null;
+
+
+// Helper: recolor a PNG dataURL so non-transparent pixels become pure black while preserving alpha.
+// Returns a Promise that resolves to a new dataURL.
+function recolorDataUrlToBlack(dataUrl) {
+  return new Promise((resolve, reject) => {
+    if (!dataUrl) return resolve(dataUrl);
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      try {
+        const im = ctx.getImageData(0,0,c.width,c.height);
+        const d = im.data;
+        for (let i=0;i<d.length;i+=4) {
+          const a = d[i+3];
+          if (a>10) {
+            // set pixel to black but keep alpha
+            d[i] = 0; d[i+1] = 0; d[i+2] = 0;
+            // keep d[i+3] as is
+          }
+        }
+        ctx.putImageData(im,0,0);
+        const out = c.toDataURL('image/png');
+        resolve(out);
+      } catch (e) {
+        // security error / tainted canvas: fallback to original
+        console.warn('recolorDataUrlToBlack failed, returning original', e);
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = (e) => {
+      console.warn('recolorDataUrlToBlack img load failed', e);
+      resolve(dataUrl);
+    };
+    img.src = dataUrl;
+  });
+}
+
+// Helper: update a record's signature or return_signature and re-render views immediately.
+// mode: 'checkout' (sets .signature) or 'returned' (sets .return_signature)
+function attachSignatureToRecord(recordId, mode, dataUrl) {
+  if (!dataUrl) return Promise.resolve();
+  // Recolor to black then attach
+  return recolorDataUrlToBlack(dataUrl).then((blackUrl) => {
+    try {
+      const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
+      const logs = JSON.parse(localStorage.getItem('logs')||'[]');
+      // find in history by id
+      const recIndex = history.findIndex(r=>r.id===recordId);
+      if (recIndex>-1) {
+        if (mode==='checkout') history[recIndex].signature = blackUrl;
+        else history[recIndex].return_signature = blackUrl;
+      } else if (history.length>0) {
+        // fallback: attach to last record
+        const rec = history[history.length-1];
+        if (mode==='checkout') rec.signature = blackUrl;
+        else rec.return_signature = blackUrl;
+      }
+      // update logs similarly
+      const logIndex = logs.findIndex(l=>l.id===recordId);
+      if (logIndex>-1) {
+        if (mode==='checkout') logs[logIndex].signature = blackUrl;
+        else logs[logIndex].return_signature = blackUrl;
+      } else if (logs.length>0) {
+        const l = logs[logs.length-1];
+        if (mode==='checkout') l.signature = blackUrl;
+        else l.return_signature = blackUrl;
+      }
+      localStorage.setItem('accessHistory', JSON.stringify(history));
+      localStorage.setItem('logs', JSON.stringify(logs));
+      // Re-render relevant tables (these functions exist in the app)
+      if (typeof renderCheckinTable === 'function') try{ renderCheckinTable(); }catch(e){console.warn(e);}
+      if (typeof renderReport === 'function') try{ renderReport(); }catch(e){console.warn(e);}
+      if (typeof renderDashboard === 'function') try{ renderDashboard(); }catch(e){console.warn(e);}
+    } catch(e) {
+      console.warn('attachSignatureToRecord failed', e);
+    }
+  });
+}
+
 }
 
 // --- Modify existing handlers to capture signature ---
@@ -4915,9 +5353,8 @@ if (typeof handleCheckOut === 'function') {
         // attach to last accessHistory entry
         const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
         if (history.length>0) {
-          history[history.length-1].signature = sig;
-          localStorage.setItem('accessHistory', JSON.stringify(history));
-        }
+          attachSignatureToRecord(history[history.length-1]?.id || (history.length?history[history.length-1].id:''),'checkout', sig);
+      }
       }
     } catch(e){ console.warn('Failed to capture checkout signature', e); }
     return res;
@@ -4935,9 +5372,8 @@ if (typeof handleCheckOut === 'function') {
           if (sig) {
             const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
             if (history.length>0) {
-              history[history.length-1].signature = sig;
-              localStorage.setItem('accessHistory', JSON.stringify(history));
-            }
+              attachSignatureToRecord(history[history.length-1]?.id || (history.length?history[history.length-1].id:''),'checkout', sig);
+      }
           }
         } catch(e){ console.warn('Failed to capture checkout signature', e); }
         return res;
@@ -5007,6 +5443,52 @@ if (modalContent) {
   });
   observer.observe(modalContent, { childList: true, subtree: false });
 }
+
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
 </script>
 
 
@@ -5082,10 +5564,10 @@ if (modalContent) {
           if (Array.isArray(window.accessHistory)) {
             const rec = window.accessHistory.find(r=>r.id===recordId) || window.accessHistory[window.accessHistory.length-1];
             if (rec && sigData) {
-              rec.return_signature = sigData;
-              if (Array.isArray(window.logs)) {
+              attachSignatureToRecord(rec?.id||'','returned', sigData);
+            if (Array.isArray(window.logs)) {
                 const log = window.logs.find(l=>l.id===recordId) || window.logs[window.logs.length-1];
-                if (log) log.return_signature = sigData;
+                /* attached via attachSignatureToRecord */
               }
               localStorage.setItem('accessHistory', JSON.stringify(window.accessHistory));
               localStorage.setItem('logs', JSON.stringify(window.logs));
@@ -5277,6 +5759,52 @@ if (modalContent) {
   }
 
 })();
+
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
 </script>
 <!-- END AUTO-PATCH -->
 
@@ -5520,6 +6048,52 @@ if (modalContent) {
   setTimeout(startSignatureAttacher, 200);
 
 })();
+
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
 </script>
 <!-- END FINAL PATCH -->
 
@@ -5774,6 +6348,52 @@ if (modalContent) {
   }
 
 })(); 
+
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
 </script>
 <!-- END USER REQUEST PATCH -->
 
@@ -5930,6 +6550,52 @@ if (modalContent) {
   window.openSignatureManager = openSigManager;
 
 })(); 
+
+// --- Recent activity (renderRecentActivity function)
+function renderRecentActivity() {
+  const recentActivityList = document.getElementById('recentActivityList');
+  if (!recentActivityList) return;
+  const sorted = (accessHistory || []).slice().sort((a,b)=> new Date(b.time_taken || b.time || 0) - new Date(a.time_taken || a.time || 0));
+  if (sorted.length === 0) {
+    recentActivityList.innerHTML = '<tr><td colspan=\"12\">No recent activity</td></tr>';
+    return;
+  }
+  recentActivityList.innerHTML = '';
+  sorted.slice(0, 20).forEach(rec => {
+    const keyNumber = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.num || rec.key_taken || '') : (rec.key_taken||'');
+    const room = rec.key_id ? (keys.find(k=>k.id===rec.key_id)?.room || '') : '';
+    const issuedTo = `${rec.name||''} ${rec.employee_id? '('+rec.employee_id+')':''}`;
+    const issuedBy = rec.issued_by || '';
+    const checkoutSig = rec.signature ? `<img src=\"${rec.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeTaken = rec.time_taken || rec.time || '';
+    const status = rec.status || ((rec.items_returned && rec.items_returned.every(i=>i.returned>=i.quantity))? 'Returned' : 'Taken');
+    const returnedBy = rec.returned_by || '';
+    const receivedBy = rec.receiver || '';
+    const checkinSig = rec.return_signature ? `<img src=\"${rec.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : '';
+    const timeBrought = rec.time_brought || '';
+    const remarks = rec.remarks || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${remarks}</td>
+    `;
+    recentActivityList.appendChild(tr);
+  });
+}
+// call once on load to populate the table
+try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity error', e); }
+
+// --- Chart ---
 </script>
 <!-- END SIGNATURE ACCESSOR PATCH -->
 
