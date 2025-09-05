@@ -2764,6 +2764,7 @@ function renderOverviewCards() {
         <td>${item.phone||''}</td>
         <td>${item.key_taken ? 'Key: ' + item.key_taken : ''} ${item.access_card_taken ? 'Card: ' + item.access_card_taken : ''}</td>
         <td>${item.time_taken||''}</td>
+        <td></td>
         <td><span class="status-badge status-overdue status-badge-enhanced">OVERDUE</span></td>
       `;
       overdueList.appendChild(tr);
@@ -3127,15 +3128,17 @@ function showDetailModal(type) {
                   <td>${item.employeeName} (${item.employeeId})</td>
                   <td>${item.department || ''}</td>
                   <td>${item.timeTaken}</td>
-                  <td>${ (function(){
+                  <!-- Check Out Signature column: only render signatures here -->
+                  <td>${ item.overdue ? '' : (function(){
                     // attempt to find the original record for signature display
                     const rec = accessHistory.find(r=>r.id===item.recordId)||{};
                     return renderSignaturesForRecord(rec) || '';
-                  })()}</td>
+                  })() }</td>
+                  <!-- Status column: render OVERDUE here, not in signature cell -->
                   <td>${ item.overdue ? '<span class="status-badge status-overdue status-badge-enhanced">OVERDUE</span>' : '<span class="status-badge status-taken status-badge-enhanced">TAKEN</span>' }</td>
                 </tr>`;
               }).join('')}
-            </tbody>
+            </tbody>>>
           </table>
         </div>
       </div>`;
