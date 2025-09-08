@@ -2315,13 +2315,7 @@ try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity er
             </div>
             <div class="form-group">
               <label for="keyCategory">Category</label>
-              <select id="keyCategory" class="form-input">
-                <option value="Room">Room Key</option>
-                <option value="Master">Master Key</option>
-                <option value="Storage">Storage Key</option>
-                <option value="Emergency">Emergency Key</option>
-                <option value="Other">Other</option>
-              </select>
+              <input type="text" id="keyCategory" class="form-input" placeholder="Enter category (e.g., Room, Master, Storage)" />
             </div>
             <div class="form-group">
               <label for="keyRemarks">Remarks</label>
@@ -4266,7 +4260,7 @@ function renderEmployeeTable() {
       <td>${emp.department}</td>
       <td>${emp.position||''}</td>
       <td class="flex gap-1">
-        <button onclick="editEmployee('${emp.id}')" class="rw-btn edit-btn text-xs px-2 py-1 rounded">Edit</button>
+        <button onclick="editEmployeeProtected('${emp.id}')" class="rw-btn edit-btn text-xs px-2 py-1 rounded">Edit</button>
         <button onclick="confirmAction(() => removeEmployee('${emp.id}'))" class="rw-btn delete-btn text-xs px-2 py-1 rounded">Remove</button>
       </td>`;
     tbody.appendChild(tr);
@@ -4530,7 +4524,7 @@ function renderKeyTable() {
       <td>${k.category || ''}</td>
       <td>${status}</td>
       <td class="flex gap-1">
-        <button onclick="editKey('${k.id}')" class="rw-btn edit-btn text-xs px-2 py-1 rounded">Edit</button>
+        <button onclick="editKeyProtected('${k.id}')" class="rw-btn edit-btn text-xs px-2 py-1 rounded">Edit</button>
         <button onclick="confirmAction(() => removeKey('${k.id}'))" class="rw-btn delete-btn text-xs px-2 py-1 rounded">Remove</button>
       </td>`;
     tbody.appendChild(tr);
@@ -4783,7 +4777,7 @@ function renderCardTable() {
       <td>${c.desc||''}</td>
       <td>${status}</td>
       <td class="flex gap-1">
-        <button onclick="editCard('${c.id}')" class="rw-btn edit-btn text-xs px-2 py-1 rounded">Edit</button>
+        <button onclick="editCardProtected('${c.id}')" class="rw-btn edit-btn text-xs px-2 py-1 rounded">Edit</button>
         <button onclick="confirmAction(() => removeCard('${c.id}'))" class="rw-btn delete-btn text-xs px-2 py-1 rounded">Remove</button>
       </td>`;
     tbody.appendChild(tr);
@@ -4950,7 +4944,7 @@ function importCards(files) {
 // --- Password Protected Actions ---
 function confirmAction(callback) {
   const password = prompt('Enter password to proceed:');
-  if (password === 'rwdha21') {
+  if (password === 'rwdha@2025') {
     callback();
   } else {
     showToast('Incorrect password. Action aborted.');
@@ -6099,6 +6093,70 @@ try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity er
 // --- Chart ---
 </script>
 <!-- END FINAL PATCH -->
+<script>
+
+/* --- Protected edit wrappers (require confirmAction with password rwdha@2025) --- */
+(function(){
+  if (window.__protected_edit_wrappers_installed) return;
+  window.__protected_edit_wrappers_installed = true;
+
+  window.editKeyProtected = function(id){
+    confirmAction(function(){ try { editKey(id); } catch(e){ console.warn('editKey error', e); } });
+  };
+  window.editCardProtected = function(id){
+    confirmAction(function(){ try { editCard(id); } catch(e){ console.warn('editCard error', e); } });
+  };
+  window.editEmployeeProtected = function(id){
+    confirmAction(function(){ try { editEmployee(id); } catch(e){ console.warn('editEmployee error', e); } });
+  };
+
+  // After showing the checkin modal, ensure all card return items are grouped into a single section
+  try {
+    const origShow = window.showCheckinModal;
+    if (typeof origShow === 'function') {
+      window.showCheckinModal = function(recordId){
+        const res = origShow.call(this, recordId);
+        setTimeout(()=>{
+          try {
+            const modal = document.getElementById('modalContent');
+            if (!modal) return;
+            // Ensure a single card container exists
+            let cardList = modal.querySelector('#cardReturnList');
+            const returnSection = modal.querySelector('.return-section') || modal;
+            if (!cardList) {
+              cardList = document.createElement('div');
+              cardList.id = 'cardReturnList';
+              cardList.style.marginTop = '12px';
+              const h = document.createElement('div');
+              h.className = 'return-section-title';
+              h.innerHTML = '<i class="fa-solid fa-id-card"></i> Cards to return';
+              cardList.appendChild(h);
+              returnSection.appendChild(cardList);
+            }
+            // Move card item wrappers into the single container
+            const cardEls = Array.from(modal.querySelectorAll('[id^=\"return_item_card_\"]'));
+            cardEls.forEach(el=>{
+              if (el.parentNode !== cardList) {
+                cardList.appendChild(el);
+              }
+            });
+            // Also move any hidden inputs for cards into the cardList to keep related inputs together
+            const hiddenInputs = Array.from(modal.querySelectorAll('input[type=\"hidden\"][id^=\"return_quantity_card_\"]'));
+            hiddenInputs.forEach(inp=>{
+              if (inp.parentNode !== cardList) {
+                cardList.appendChild(inp);
+              }
+            });
+          } catch(e){ console.warn('post-showCheckinModal grouping error', e); }
+        }, 80);
+        return res;
+      };
+    }
+  } catch(e){ console.warn(e); }
+})();
+
+</script>
+
 
 
 <!-- BEGIN USER REQUEST PATCH: return-quantity defaults & signature viewer -->
