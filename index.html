@@ -3300,10 +3300,16 @@ function addItemToCheckout(type, item) {
   );
   
   if (existingItem) {
-    const quantityEl = existingItem.querySelector('.item-quantity');
-    const currentQuantity = parseInt(quantityEl.textContent);
-    quantityEl.textContent = currentQuantity + 1;
-    return;
+    if (type === 'key') {
+      const quantityEl = existingItem.querySelector('.item-quantity');
+      const currentQuantity = parseInt(quantityEl.textContent);
+      quantityEl.textContent = currentQuantity + 1;
+      return;
+    } else {
+      // Card already selected — cards are single items (name only). Ignore duplicate selection.
+      showToast('Card already selected');
+      return;
+    }
   }
   
   const itemElement = document.createElement('div');
@@ -3413,8 +3419,14 @@ function handleCheckOut(e) {
   selectedItems.forEach(item => {
     const type = item.dataset.itemType;
     const id = item.dataset.itemId;
-    const quantity = parseInt(item.querySelector('.item-quantity').textContent);
-    
+    let quantity = 1;
+    if (type === 'key') {
+      const qEl = item.querySelector('.item-quantity');
+      quantity = qEl ? parseInt(qEl.textContent) : 1;
+    } else {
+      // Card: always treat as single item (no quantity UI)
+      quantity = 1;
+    }
     // Add to items_returned with quantity
     data.items_returned.push({
       type: type,
@@ -3692,18 +3704,12 @@ function showCheckinModal(recordId) {
           const returned = item.returned || 0;
           const total = item.quantity;
           const pending = total - returned;
-          
+
           if (item.type === 'key') {
             const key = keys.find(k => k.id === item.id);
             itemDetails = key ? `Key: ${key.num} - ${key.room}` : `Key: ${item.id}`;
             icon = '<i class="fa-solid fa-key key-icon mr-2"></i>';
-          } else {
-            const card = cards.find(c => c.id === item.id);
-            itemDetails = card ? `Card: ${card.number} - ${card.category}` : `Card: ${item.id}`;
-            icon = '<i class="fa-solid fa-id-card card-icon mr-2"></i>';
-          }
-          
-          return `
+            return `
             <div class="return-item ${pending > 0 ? 'item-pending' : 'item-returned'}" id="return_item_${item.type}_${item.id}">
               <div class="return-item-info">
                 ${icon}${itemDetails}
@@ -3719,6 +3725,19 @@ function showCheckinModal(recordId) {
               </div>
             </div>
           `;
+          } else {
+            // Card: display only the card name — no quantity input or pending shown
+            const card = cards.find(c => c.id === item.id);
+            itemDetails = card ? `Card: ${card.number} - ${card.category}` : `Card: ${item.id}`;
+            icon = '<i class="fa-solid fa-id-card card-icon mr-2"></i>';
+            return `
+            <div class="return-item item-returned" id="return_item_${item.type}_${item.id}">
+              <div class="return-item-info">
+                ${icon}${itemDetails}
+              </div>
+            </div>
+          `;
+          }
         }).join('')}
       </div>
     </div>
@@ -3861,10 +3880,16 @@ function handleCheckinSubmit(recordId) {
     if (input) {
       const returnQty = parseInt(input.value) || 0;
       item.returned = (item.returned || 0) + returnQty;
-      
-      // Check if all items are fully returned
       if (item.returned < item.quantity) {
         allItemsReturned = false;
+      }
+    } else {
+      // No input present (cards are name-only) — treat cards as fully returned by default
+      if (item.type === 'card') {
+        item.returned = item.quantity;
+      } else {
+        // no input for key — assume nothing returned
+        if ((item.returned || 0) < item.quantity) allItemsReturned = false;
       }
     }
   });
