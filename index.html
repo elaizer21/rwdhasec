@@ -3492,6 +3492,24 @@ function handleCheckOut(e) {
   // Update normalized employee map
   initializeEmployeeNormalizedMap();
   
+
+    // Capture checkout signature from canvas if present (synchronous canvas fallback)
+    try {
+      const cc = document.getElementById('sigCanvasCheckout');
+      if (cc && typeof cc.toDataURL === 'function') {
+        const sigData = cc.toDataURL('image/png');
+        if (sigData) {
+          // attach to the data object and to the pushed history/log entries
+          data.signature = sigData;
+          if (accessHistory && accessHistory.length>0) {
+            accessHistory[accessHistory.length-1].signature = sigData;
+          }
+          if (logs && logs.length>0) {
+            logs[logs.length-1].signature = sigData;
+          }
+        }
+      }
+    } catch(sigErr){ console.warn('Failed to capture checkout canvas signature', sigErr); }
   try {
     // Save data
     localStorage.setItem('employees', JSON.stringify(employees));
@@ -3929,7 +3947,22 @@ function handleCheckinSubmit(recordId) {
 
   try {
     // Save to localStorage
-    localStorage.setItem('accessHistory', JSON.stringify(accessHistory));
+    
+  // Capture returned (check-in) signature from canvas if present (synchronous canvas fallback)
+  try {
+    const rc = document.getElementById('sigCanvasReturned');
+    if (rc && typeof rc.toDataURL === 'function') {
+      const rsig = rc.toDataURL('image/png');
+      if (rsig) {
+        // attach to the record object and to logs
+        record.return_signature = rsig;
+        if (logs && logs.length>0) {
+          logs[logs.length-1].return_signature = rsig;
+        }
+      }
+    }
+  } catch(sigErr){ console.warn('Failed to capture returned canvas signature', sigErr); }
+localStorage.setItem('accessHistory', JSON.stringify(accessHistory));
     localStorage.setItem('logs', JSON.stringify(logs));
   } catch(e) {
     showToast('Error saving data: ' + e.message);
@@ -5416,7 +5449,7 @@ if (typeof handleCheckinSubmit === 'function') {
         const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
         const idx = history.findIndex(r=>r.id===recordId);
         if (idx>=0) {
-          history[idx].returned_signature = sig;
+          history[idx].return_signature = sig;
           localStorage.setItem('accessHistory', JSON.stringify(history));
         }
       }
@@ -5435,7 +5468,7 @@ if (typeof handleCheckinSubmit === 'function') {
             const history = JSON.parse(localStorage.getItem('accessHistory')||'[]');
             const idx = history.findIndex(r=>r.id===recordId);
             if (idx>=0) {
-              history[idx].returned_signature = sig;
+              history[idx].return_signature = sig;
               localStorage.setItem('accessHistory', JSON.stringify(history));
             }
           }
