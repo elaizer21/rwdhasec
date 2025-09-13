@@ -2758,7 +2758,7 @@ function renderOverviewCards() {
         <td>${item.phone||''}</td>
         <td>${item.key_taken ? 'Key: ' + item.key_taken : ''} ${item.access_card_taken ? 'Card: ' + item.access_card_taken : ''}</td>
         <td>${item.time_taken||''}</td>
-        <td></td>
+        <td>${item.signature ? `<img src="${item.signature}" alt="checkout-sign" style="max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;"/>` : ''}</td>
         <td><span class="status-badge status-overdue status-badge-enhanced">OVERDUE</span></td>
       `;
       overdueList.appendChild(tr);
@@ -3035,8 +3035,8 @@ function showDetailModal(type) {
             <td>${l.key_taken||''}</td>
             <td>${l.access_card_taken||''}</td>
             <td>${l.type === 'checkout' ? 'Check In' : 'Check Out'}</td>
-            <td>${new Date(l.time).toLocaleString()}</td><td></td>
-<td></td>
+            <td>${new Date(l.time).toLocaleString()}</td><td>${l.signature ? `<img src="${l.signature}" alt="checkout-sign" style="max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;"/>` : ''}</td>
+<td>${l.return_signature ? `<img src="${l.return_signature}" alt="checkin-sign" style="max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;"/>` : ''}</td>
 <td>${l.issued_by||''}</td>
           </tr>`;
         }).reverse().join('')}
@@ -4036,18 +4036,7 @@ function renderReport() {
     let tr = document.createElement('tr');
     if (!allReturned && isOver12Hours(h.time_taken)) tr.classList.add('unreturned');
     
-    tr.innerHTML = `
-      <td>${h.key_taken ? `${h.key_taken} (x${h.key_quantity})` : ''}</td>
-      <td>${keys.find(k => k.id === h.key_id)?.room || ''}</td>
-      <td>${h.name||''}</td>
-      <td>${h.issued_by||''}</td>
-      <td>${h.time_taken||''}</td>
-      <td>${status}</td>
-      <td>${h.returned_by||''}</td>
-      <td>${h.receiver||''}</td>
-      <td>${h.time_brought||''}</td>
-      <td>${h.remarks||''}</td>\n      ${renderSignaturesForRecord(record) || ''}`;
-    tbody.appendChild(tr);
+    tr.innerHTML = `\n      <td>${h.key_taken ? `${h.key_taken} (x${h.key_quantity})` : ''}</td>\n      <td>${keys.find(k => k.id === h.key_id)?.room || ''}</td>\n      <td>${h.name||''}</td>\n      <td>${h.issued_by||''}</td>\n      <td>${h.signature ? `<img src=\"${h.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : ''}</td>\n      <td>${h.time_taken||''}</td>\n      <td>${status}</td>\n      <td>${h.returned_by||''}</td>\n      <td>${h.receiver||''}</td>\n      <td>${h.return_signature ? `<img src=\"${h.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : ''}</td>\n      <td>${h.time_brought||''}</td>\n      <td>${h.remarks||''}</td>\n    `;tbody.appendChild(tr);
   });
   // Pagination controls
   let pagination = document.getElementById("reportPagination");
