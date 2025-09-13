@@ -1648,10 +1648,10 @@ table img { max-width: 100% !important; height: auto !important; display: block;
     if (!rec) return '';
     let html = '';
     if (rec.signature) {
-      html += `<div class="sig-thumb"><div class="sig-label">Checkout</div><img src="${rec.signature}" alt="checkout-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;"/></div>`;
+      html += `<div class="sig-thumb"><img src="${rec.signature}" alt="checkout-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;"/></div>`;
     }
     if (rec.return_signature) {
-      html += `<div class="sig-thumb"><div class="sig-label">Return</div><img src="${rec.return_signature}" alt="return-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;"/></div>`;
+      html += `<div class="sig-thumb"><img src="${rec.return_signature}" alt="return-sign" style="max-width:120px;max-height:60px;border:1px solid #ddd;border-radius:4px;"/></div>`;
     }
     return html ? `<div class="sig-container" style="display:flex;gap:8px;align-items:center;">${html}</div>` : '';
   };
