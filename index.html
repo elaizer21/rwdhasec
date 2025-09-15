@@ -3255,35 +3255,24 @@ function filterCardSearchResults() {
 }
 
 // --- Add Item to Checkout ---
-
 function addItemToCheckout(type, item) {
   const selectedItemsContainer = document.getElementById('selectedItemsList');
-
+  
   // Create container for selected items if it doesn't exist
   if (selectedItemsContainer.innerHTML.includes('No items selected yet')) {
     selectedItemsContainer.innerHTML = '';
   }
-
+  
   // Check if item is already selected
   const existingItem = Array.from(selectedItemsContainer.children).find(el => 
     el.dataset.itemId === item.id && el.dataset.itemType === type
   );
-
+  
   if (existingItem) {
     if (type === 'key') {
-      // increase numeric input value respecting max
-      let qtyInput = existingItem.querySelector('input.item-quantity-input');
-      if (!qtyInput) qtyInput = existingItem.querySelector('input[type=\"number\"]');
-      const keyObj = (window.keys||[]).find(k=>k.id===item.id);
-      const max = keyObj ? (keyObj.quantity || 1) : 1;
-      let current = qtyInput ? (parseInt(qtyInput.value) || 1) : (parseInt(existingItem.querySelector('.item-quantity')?.textContent) || 1);
-      if (current < max) current++;
-      if (qtyInput) qtyInput.value = current;
-      else {
-        const span = existingItem.querySelector('.item-quantity');
-        if (span) span.textContent = current;
-      }
-      syncHiddenQuantity(type, item.id, current);
+      const quantityEl = existingItem.querySelector('.item-quantity');
+      const currentQuantity = parseInt(quantityEl.textContent);
+      quantityEl.textContent = currentQuantity + 1;
       return;
     } else {
       // Card already selected — cards are single items (name only). Ignore duplicate selection.
@@ -3291,12 +3280,12 @@ function addItemToCheckout(type, item) {
       return;
     }
   }
-
+  
   const itemElement = document.createElement('div');
   itemElement.className = `selected-item ${type === 'key' ? 'key-item' : 'card-item'}`;
   itemElement.dataset.itemType = type;
   itemElement.dataset.itemId = item.id;
-
+  
   const itemDetails = type === 'key' 
     ? `<div>
         <div><strong><i class="fa-solid fa-key key-icon mr-2"></i>Key:</strong> ${item.num} - ${item.room}</div>
@@ -3306,141 +3295,46 @@ function addItemToCheckout(type, item) {
         <div><strong><i class="fa-solid fa-id-card card-icon mr-2"></i>Card:</strong> ${item.number} - ${item.category}</div>
         <div class="item-category">${item.desc || ''}</div>
       </div>`;
-
-  // Build quantity section
-  let quantitySection = '';
-  if (type === 'key') {
-    // default quantity should reflect the key's shown quantity
-    const defaultQty = (window.keys||[]).find(k=>k.id===item.id)?.quantity || item.quantity || 1;
-    quantitySection = `
-      <div class="item-quantity-section">
-        <div class="quantity-control">
-          <div class="quantity-btn" onclick="adjustSelectedItemQuantity('${type}', '${item.id}', -1)">-</div>
-          <input type="number" class="quantity-input item-quantity-input" min="1" max="${defaultQty}" value="${defaultQty}" onchange="onSelectedQtyChange('${type}','${item.id}', this.value)" />
-          <div class="quantity-btn" onclick="adjustSelectedItemQuantity('${type}', '${item.id}', 1)">+</div>
-        </div>
-        <button class="rw-btn text-xs px-2 py-1 rounded" onclick="removeSelectedItem('${type}', '${item.id}')" aria-label="Remove item">Remove</button>
-      </div>
-    `;
-  } else {
-    // Cards: show static '1' and add hidden input for form submission
-    quantitySection = `
-      <div class="item-quantity-section">
-        <span class="item-quantity">1</span>
-        <button class="rw-btn text-xs px-2 py-1 rounded" onclick="removeSelectedItem('${type}', '${item.id}')" aria-label="Remove item">Remove</button>
-      </div>
-    `;
-  }
-
+  
   itemElement.innerHTML = `
     ${itemDetails}
-    ${quantitySection}
+    <div class="item-quantity-section">
+      <div class="quantity-control">
+        <div class="quantity-btn" onclick="adjustSelectedItemQuantity('${type}', '${item.id}', -1)">-</div>
+        <span class="item-quantity">1</span>
+        <div class="quantity-btn" onclick="adjustSelectedItemQuantity('${type}', '${item.id}', 1)">+</div>
+      </div>
+      <button class="rw-btn text-xs px-2 py-1 rounded" onclick="removeSelectedItem('${type}', '${item.id}')" aria-label="Remove item">Remove</button>
+    </div>
   `;
-
+  
   selectedItemsContainer.appendChild(itemElement);
-
-  // create or sync hidden input in the checkout form for submission
-  const initialQty = (type === 'key') ? ((window.keys||[]).find(k=>k.id===item.id)?.quantity || item.quantity || 1) : 1;
-  syncHiddenQuantity(type, item.id, initialQty);
 }
-
-
 
 function adjustSelectedItemQuantity(type, id, change) {
   const itemElement = document.querySelector(`.selected-item[data-item-type="${type}"][data-item-id="${id}"]`);
   if (!itemElement) return;
-
-  // Prefer numeric input if present (keys), otherwise fallback to span (cards)
-  const qtyInput = itemElement.querySelector('input.item-quantity-input');
-  if (qtyInput) {
-    let quantity = parseInt(qtyInput.value) || 1;
-    quantity += change;
-    // Get the key object to check max quantity
-    if (type === 'key') {
-      const key = keys.find(k => k.id === id);
-      if (key && quantity > key.quantity) {
-        showToast(`Cannot exceed available quantity (${key.quantity})`);
-        return;
-      }
-    }
-    if (quantity < 1) {
-      removeSelectedItem(type, id);
-      return;
-    }
-    qtyInput.value = quantity;
-    syncHiddenQuantity(type, id, quantity);
-    return;
-  }
-
-  // Fallback (older card-style)
+  
   const quantityEl = itemElement.querySelector('.item-quantity');
   let quantity = parseInt(quantityEl.textContent);
   quantity += change;
-
-  // Cards are single items — don't allow increasing
-  if (type === 'card') {
-    showToast('Card quantity fixed at 1');
-    return;
+  
+  // Get the key object to check max quantity
+  if (type === 'key') {
+    const key = keys.find(k => k.id === id);
+    if (key && quantity > key.quantity) {
+      showToast(`Cannot exceed available quantity (${key.quantity})`);
+      return;
+    }
   }
-
+  
   if (quantity < 1) {
     removeSelectedItem(type, id);
     return;
   }
-
-  // Get the key object to check max quantity
-  const key = keys.find(k => k.id === id);
-  if (key && quantity > key.quantity) {
-    showToast(`Cannot exceed available quantity (${key.quantity})`);
-    return;
-  }
-
+  
   quantityEl.textContent = quantity;
-  syncHiddenQuantity(type, id, quantity);
 }
-
-
-
-// Sync a hidden input inside checkoutForm with the selected quantity so form submission handlers can read it.
-function syncHiddenQuantity(type, id, qty) {
-  try {
-    const form = document.getElementById('checkoutForm');
-    if (!form) return;
-    const inputId = `checkout_item_qty_${type}_${id}`;
-    let hidden = document.getElementById(inputId);
-    if (!hidden) {
-      hidden = document.createElement('input');
-      hidden.type = 'hidden';
-      hidden.id = inputId;
-      hidden.name = inputId;
-      form.appendChild(hidden);
-    }
-    hidden.value = qty;
-  } catch(e){ console.warn('syncHiddenQuantity error', e); }
-}
-
-// Called when user manually edits the numeric input
-function onSelectedQtyChange(type, id, value) {
-  let qty = parseInt(value) || 1;
-  const keyObj = (window.keys||[]).find(k=>k.id===id);
-  const max = keyObj ? (keyObj.quantity || 1) : 1;
-  if (qty < 1) qty = 1;
-  if (qty > max) {
-    qty = max;
-    showToast(`Cannot exceed available quantity (${max})`);
-  }
-  const el = document.querySelector(`.selected-item[data-item-type="${type}"][data-item-id="${id}"]`);
-  if (el) {
-    const input = el.querySelector('input.item-quantity-input');
-    if (input) input.value = qty;
-    const span = el.querySelector('.item-quantity');
-    if (span) span.textContent = qty;
-  }
-  syncHiddenQuantity(type, id, qty);
-}
-
-
-
 
 function removeSelectedItem(type, id) {
   const itemElement = document.querySelector(`.selected-item[data-item-type="${type}"][data-item-id="${id}"]`);
