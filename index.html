@@ -1904,38 +1904,7 @@ try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity er
               <div class="pagination" id="overduePagination"></div>
             </div>
           </div>
-          <div class="overview-card">
-            <div class="collapsible-header" onclick="toggleCollapsible('recentActivity')">
-              <h3><i class="fa-solid fa-user-clock text-[var(--info)]"></i> Recent Activity</h3>
-              <i class="fa-solid fa-chevron-down toggle-icon" id="recentActivityIcon"></i>
-            </div>
-            <div class="collapsible-content" id="recentActivityContent">
-              <div class="table-container">
-                <table>
-                  <thead>
-                    <tr class="table-head">
-                      <th>Key Number</th>
-                      <th>Room Description</th>
-                      <th>Issued To</th>
-                      <th>Issued By</th>
-                      <th>Check Out Signature</th>
-                      <th>Time Taken</th>
-                      <th>Status</th>
-                      <th>Returned By</th>
-                      <th>Received By</th>
-                      <th>Check In Signature</th>
-                      <th>Time Brought</th>
-                      <th>Remarks</th>
-</tr>
-                  </thead>
-                  <tbody id="recentActivityList">
-                    <tr><td colspan="12">Loading recent activity...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="pagination" id="activityPagination"></div>
-            </div>
-          </div>
+          
         </div>
         
         <div class="rounded-xl rw-card p-6 mb-10 shadow">
@@ -1987,8 +1956,8 @@ try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity er
                 <input type="text" name="name" id="checkoutName" class="form-input" placeholder="Enter employee's full name" required />
               </div>
               <div class="form-group">
-                <label for="checkoutPhone" class="required">Phone Number</label>
-                <input type="tel" name="phone" id="checkoutPhone" class="form-input" placeholder="Enter phone number" required />
+                <label for="checkoutPhone">Phone Number <span class="text-xs text-gray-500">(optional)</span></label>
+                <input type="tel" name="phone" id="checkoutPhone" class="form-input" placeholder="Enter phone number" />
               </div>
               <div class="form-group">
                 <label for="checkoutDept" class="required">Department</label>
@@ -4002,6 +3971,7 @@ localStorage.setItem('accessHistory', JSON.stringify(accessHistory));
 
 // --- REPORT TABLE WITH PAGINATION ---
 let reportCurrentPage = 1;
+
 function renderReport() {
   let from = document.getElementById('reportFrom')?.value;
   let to = document.getElementById('reportTo')?.value;
@@ -4009,46 +3979,116 @@ function renderReport() {
   let subheading = document.getElementById('reportSubheading');
   let entriesPerPage = parseInt(document.getElementById('entriesPerPage').value, 10) || 10;
   tbody.innerHTML = '';
-  let filtered = accessHistory.filter(h => {
-    let t = h.time_taken ? new Date(h.time_taken) : null;
-    if(from && t && t < new Date(from)) return false;
-    if(to && t && t > new Date(to+"T23:59:59")) return false;
+
+  // Load fresh copies (in case other code mutated window vars)
+  let history = JSON.parse(localStorage.getItem('accessHistory')||'[]') || [];
+  let logsArr = JSON.parse(localStorage.getItem('logs')||'[]') || [];
+
+  // Normalize logs so each has an id (prefer record_id when present)
+  const normalizedLogs = logsArr.map(l => {
+    const id = l.record_id || l.id || ('LOG' + (l.time ? Date.parse(l.time) : Date.now()) + Math.random().toString(36).slice(2,6));
+    return Object.assign({}, l, {
+      id,
+      time_taken: l.time || l.time_taken || '',
+      name: l.name || l.returned_by || l.employee_name || '',
+      issued_by: l.issued_by || l.issued_by || '',
+      items_returned: l.items_returned || [],
+      key_taken: l.key_taken || '',
+      key_quantity: l.key_quantity || 0,
+      key_id: l.key_id || '',
+      status: l.status || (l.type || ''),
+      signature: l.signature || '',
+      return_signature: l.return_signature || ''
+    });
+  });
+
+  // Merge history and logs, preferring accessHistory entries when ids collide
+  const mergedMap = new Map();
+  history.forEach(h => {
+    if (h && h.id) mergedMap.set(h.id, h);
+  });
+  normalizedLogs.forEach(l => {
+    if (!mergedMap.has(l.id)) mergedMap.set(l.id, l);
+  });
+  const combined = Array.from(mergedMap.values());
+
+  // Filter by date range
+  const filtered = combined.filter(h => {
+    if (!h) return false;
+    const tstr = h.time_taken || h.time || h.time_taken || h.time;
+    let t = tstr ? new Date(tstr) : null;
+    if (from && t && t < new Date(from)) return false;
+    if (to && t && t > new Date(to + "T23:59:59")) return false;
     return true;
   });
+
   subheading.textContent = `(${from?from:'Start'} to ${to?to:'Today'})`;
-  // Pagination
-  let totalPages = Math.ceil(filtered.length/entriesPerPage);
-  if(reportCurrentPage > totalPages) reportCurrentPage = totalPages || 1;
-  let startIdx = (reportCurrentPage-1)*entriesPerPage;
-  let pageData = filtered.slice(startIdx, startIdx+entriesPerPage);
-  pageData.forEach(h => {
-    const allReturned = h.items_returned.every(item => item.returned === item.quantity);
-    const anyPending = h.items_returned.some(item => item.returned < item.quantity);
-    
-    let status = allReturned 
-      ? '<span class="status-badge status-success status-badge-enhanced">RETURNED</span>' 
-      : anyPending 
-        ? (isOver12Hours(h.time_taken) 
-          ? '<span class="status-badge status-overdue status-badge-enhanced">OVERDUE</span>' 
-          : '<span class="status-badge status-taken status-badge-enhanced">TAKEN</span>')
-        : '';
-    
-    let tr = document.createElement('tr');
-    if (!allReturned && isOver12Hours(h.time_taken)) tr.classList.add('unreturned');
-    
-    tr.innerHTML = `\n      <td>${h.key_taken ? `${h.key_taken} (x${h.key_quantity})` : ''}</td>\n      <td>${keys.find(k => k.id === h.key_id)?.room || ''}</td>\n      <td>${h.name||''}</td>\n      <td>${h.issued_by||''}</td>\n      <td>${h.signature ? `<img src=\"${h.signature}\" alt=\"checkout-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : ''}</td>\n      <td>${h.time_taken||''}</td>\n      <td>${status}</td>\n      <td>${h.returned_by||''}</td>\n      <td>${h.receiver||''}</td>\n      <td>${h.return_signature ? `<img src=\"${h.return_signature}\" alt=\"checkin-sign\" style=\"max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;\"/>` : ''}</td>\n      <td>${h.time_brought||''}</td>\n      <td>${h.remarks||''}</td>\n    `;tbody.appendChild(tr);
+
+  // Sort by time desc
+  filtered.sort((a,b)=> {
+    const ta = new Date(a.time_taken || a.time || 0).getTime();
+    const tb = new Date(b.time_taken || b.time || 0).getTime();
+    return tb - ta;
   });
+
+  // Pagination
+  let totalPages = Math.ceil(filtered.length / entriesPerPage);
+  if (reportCurrentPage > totalPages) reportCurrentPage = totalPages || 1;
+  let startIdx = (reportCurrentPage - 1) * entriesPerPage;
+  let pageData = filtered.slice(startIdx, startIdx + entriesPerPage);
+
+  pageData.forEach(h => {
+    const items_returned = h.items_returned || [];
+    const allReturned = items_returned.length ? items_returned.every(item => item.returned === item.quantity) : (h.status && h.status.toLowerCase()==='returned');
+    const anyPending = items_returned.length ? items_returned.some(item => item.returned < item.quantity) : (h.status && h.status.toLowerCase().includes('part'));
+
+    let status = allReturned
+      ? '<span class="status-badge status-success status-badge-enhanced">RETURNED</span>'
+      : anyPending
+        ? (isOver12Hours(h.time_taken || h.time) ? '<span class="status-badge status-overdue status-badge-enhanced">OVERDUE</span>' : '<span class="status-badge status-taken status-badge-enhanced">TAKEN</span>')
+        : '';
+
+    let tr = document.createElement('tr');
+    if (!allReturned && isOver12Hours(h.time_taken || h.time)) tr.classList.add('unreturned');
+
+    const keyNumber = h.key_taken ? `${h.key_taken}${h.key_quantity ? ' (x'+h.key_quantity+')' : ''}` : (h.key_id ? (keys.find(k=>k.id===h.key_id)?.num || '') : '');
+    const room = h.key_id ? (keys.find(k => k.id === h.key_id)?.room || '') : (h.room || '');
+    const issuedTo = h.name || h.returned_by || h.employee_name || '';
+    const issuedBy = h.issued_by || h.returned_by || '';
+    const checkoutSig = h.signature ? `<img src="${h.signature}" alt="checkout-sign" style="max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;"/>` : '';
+    const checkinSig = h.return_signature ? `<img src="${h.return_signature}" alt="checkin-sign" style="max-width:120px;max-height:60px;object-fit:contain;border-radius:6px;border:1px solid #ddd;"/>` : '';
+    const timeTaken = h.time_taken || h.time || '';
+    const returnedBy = h.returned_by || '';
+    const receivedBy = h.receiver || h.received_by || '';
+    const timeBrought = h.time_brought || '';
+
+    tr.innerHTML = `
+      <td>${keyNumber}</td>
+      <td>${room}</td>
+      <td>${issuedTo}</td>
+      <td>${issuedBy}</td>
+      <td>${checkoutSig}</td>
+      <td>${timeTaken}</td>
+      <td>${status}</td>
+      <td>${returnedBy}</td>
+      <td>${receivedBy}</td>
+      <td>${checkinSig}</td>
+      <td>${timeBrought}</td>
+      <td>${h.remarks || ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
   // Pagination controls
   let pagination = document.getElementById("reportPagination");
-  if(totalPages>1) {
+  if (totalPages > 1) {
     let phtml = '';
-    for(let i=1;i<=totalPages;i++) {
+    for (let i = 1; i <= totalPages; i++) {
       phtml += `<button class="rw-btn px-2 py-1 text-xs ${i===reportCurrentPage?'sidebar-active':''}" onclick="reportCurrentPage=${i};renderReport()">${i}</button>`;
     }
     pagination.innerHTML = phtml;
   } else pagination.innerHTML = '';
 }
-
 // Clear report filters
 function clearReportFilters() {
   document.getElementById('reportFrom').value = '';
