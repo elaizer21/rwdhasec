@@ -3301,24 +3301,46 @@ function addItemToCheckout(type, item) {
     <div class="item-quantity-section">
       <div class="quantity-control">
         <div class="quantity-btn" onclick="adjustSelectedItemQuantity('${type}', '${item.id}', -1)">-</div>
-        <span class="item-quantity">1</span>
+        <!-- quantity input: defaults to key.quantity for keys, editable, min 1 -->
+        <input type="number" class="item-quantity-input form-input w-16 text-center" min="1" value="\${(function(){ try{ if(type==='key'){ const k = keys.find(kk=>kk.id===item.id); return (k && typeof k.quantity!=='undefined')? k.quantity : 1 } return 1 }catch(e){return 1}})()}" onchange="updateSelectedItemQuantity('${type}', '${item.id}', this.value)" />
         <div class="quantity-btn" onclick="adjustSelectedItemQuantity('${type}', '${item.id}', 1)">+</div>
       </div>
       <button class="rw-btn text-xs px-2 py-1 rounded" onclick="removeSelectedItem('${type}', '${item.id}')" aria-label="Remove item">Remove</button>
     </div>
-  `;
-  
+  `;  
   selectedItemsContainer.appendChild(itemElement);
 }
 
 function adjustSelectedItemQuantity(type, id, change) {
   const itemElement = document.querySelector(`.selected-item[data-item-type="${type}"][data-item-id="${id}"]`);
   if (!itemElement) return;
-  
+
+  // Try to find an input first (new UI), otherwise fall back to span
+  const inputEl = itemElement.querySelector('.item-quantity-input');
+  if (inputEl) {
+    let quantity = parseInt(inputEl.value) || 0;
+    quantity += change;
+
+    const keyObj = (type === 'key') ? keys.find(k => k.id === id) : null;
+    const max = keyObj ? (keyObj.quantity || keyObj.quantity === 0 ? keyObj.quantity : null) : null;
+    if (max !== null && quantity > max) {
+      showToast(`Cannot exceed available quantity (${max})`);
+      inputEl.value = max;
+      return;
+    }
+    if (quantity < 1) {
+      removeSelectedItem(type, id);
+      return;
+    }
+    inputEl.value = quantity;
+    return;
+  }
+
+  // Fallback for older span-based UI
   const quantityEl = itemElement.querySelector('.item-quantity');
   let quantity = parseInt(quantityEl.textContent);
   quantity += change;
-  
+
   // Get the key object to check max quantity
   if (type === 'key') {
     const key = keys.find(k => k.id === id);
@@ -3327,14 +3349,40 @@ function adjustSelectedItemQuantity(type, id, change) {
       return;
     }
   }
-  
+
   if (quantity < 1) {
     removeSelectedItem(type, id);
     return;
   }
-  
+
   quantityEl.textContent = quantity;
 }
+
+function updateSelectedItemQuantity(type, id, value) {
+  const itemElement = document.querySelector(`.selected-item[data-item-type="${type}"][data-item-id="${id}"]`);
+  if (!itemElement) return;
+  const inputEl = itemElement.querySelector('.item-quantity-input');
+  let qty = parseInt(value) || 0;
+  if (qty < 1) {
+    removeSelectedItem(type, id);
+    return;
+  }
+  if (type === 'key') {
+    const key = keys.find(k => k.id === id);
+    if (key) {
+      // ensure not exceeding available
+      const max = (typeof key.quantity !== 'undefined') ? key.quantity : null;
+      if (max !== null && qty > max) {
+        showToast(`Cannot exceed available quantity (${max})`);
+        qty = max;
+      }
+      // set input's max dynamically
+      if (inputEl) inputEl.max = max;
+    }
+  }
+  if (inputEl) inputEl.value = qty;
+}
+
 
 function removeSelectedItem(type, id) {
   const itemElement = document.querySelector(`.selected-item[data-item-type="${type}"][data-item-id="${id}"]`);
@@ -3390,8 +3438,14 @@ function handleCheckOut(e) {
     const id = item.dataset.itemId;
     let quantity = 1;
     if (type === 'key') {
-      const qEl = item.querySelector('.item-quantity');
-      quantity = qEl ? parseInt(qEl.textContent) : 1;
+      // support both old span and new input
+      const qInput = item.querySelector('.item-quantity-input');
+      if (qInput) {
+        quantity = parseInt(qInput.value) || 1;
+      } else {
+        const qEl = item.querySelector('.item-quantity');
+        quantity = qEl ? parseInt(qEl.textContent) : 1;
+      }
     } else {
       // Card: always treat as single item (no quantity UI)
       quantity = 1;
@@ -3420,6 +3474,25 @@ function handleCheckOut(e) {
         data.card_quantity = quantity;
       }
     }
+
+
+  // Update keys inventory based on selected quantities (for keys only)
+  try {
+    data.items_returned.forEach(it => {
+      if (it.type === 'key') {
+        const keyObj = keys.find(k => k.id === it.id);
+        if (keyObj) {
+          // subtract the quantity taken; ensure not negative
+          keyObj.quantity = Math.max(0, (keyObj.quantity || 0) - (it.quantity || 0));
+        }
+      }
+    });
+    // persist keys and re-render key table
+    try {
+      localStorage.setItem('keys', JSON.stringify(keys));
+    } catch(e) { console.warn('Failed to save keys after checkout', e); }
+    if (typeof renderKeyTable === 'function') try { renderKeyTable(); } catch(e){/*ignore*/ }
+  } catch(e) { console.warn(e); }
   });
   
   // Add to access history
