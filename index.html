@@ -3494,12 +3494,34 @@ function handleCheckOut(e) {
     if (typeof renderKeyTable === 'function') try { renderKeyTable(); } catch(e){/*ignore*/ }
   } catch(e) { console.warn(e); }
   });
-  
   // Add to access history
   accessHistory.push(data);
-  
-  // Add to logs
-  logs.push({ 
+
+  // Build readable descriptors for keys and cards (record key numbers and card names only)
+  (function(){
+    try {
+      let keyTakenStr = '';
+      let cardTakenStr = '';
+      if (Array.isArray(data.items_returned)) {
+        const keysTaken = data.items_returned.filter(i=>i.type==='key').map(i=>{
+          const k = keys.find(kk=>kk.id===i.id);
+          const qty = i.quantity || 1;
+          return k ? (k.num + (qty>1 ? ' (x'+qty+')' : '')) : (i.id + (qty>1 ? ' (x'+qty+')' : ''));
+        });
+        const cardsTaken = data.items_returned.filter(i=>i.type==='card').map(i=>{
+          const c = cards.find(cc=>cc.id===i.id);
+          return c ? (c.number || c.name || c.id) : i.id;
+        });
+        keyTakenStr = keysTaken.join(', ');
+        cardTakenStr = cardsTaken.join(', ');
+      }
+      data.key_taken = keyTakenStr;
+      data.access_card_taken = cardTakenStr;
+    } catch(e){ console.warn('build descriptors error', e); }
+  })();
+
+  // Add to logs (detailed)
+  logs.push({
     type: 'checkout',
     time: new Date().toISOString(),
     employee_id: data.employee_id,
@@ -3507,11 +3529,11 @@ function handleCheckOut(e) {
     phone: data.phone,
     key_taken: data.key_taken || '',
     access_card_taken: data.access_card_taken || '',
+    items_returned: data.items_returned || [],
     issued_by: data.issued_by,
     time_taken: data.time_taken
   });
-  
-  // Add or update employee
+// Add or update employee
   let existing = employees.find(emp => emp.id === data.employee_id);
   if(!existing) {
     employees.push({ 
