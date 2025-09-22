@@ -3372,8 +3372,12 @@ function updateSelectedItemQuantity(type, id, value) {
     if (key) {
       // ensure not exceeding available
       const max = (typeof key.quantity !== 'undefined') ? key.quantity : null;
+      if (max !== null && qty > max) {
+        showToast(`Cannot exceed available quantity (${max})`);
+        qty = max;
+      }
       // set input's max dynamically
-      if (inputEl) inputEl.removeAttribute('max');
+      if (inputEl) inputEl.max = max;
     }
   }
   if (inputEl) inputEl.value = qty;
@@ -3479,7 +3483,7 @@ function handleCheckOut(e) {
         const keyObj = keys.find(k => k.id === it.id);
         if (keyObj) {
           // subtract the quantity taken; ensure not negative
-          keyObj.quantity = (keyObj.quantity || 0) - (it.quantity || 0);
+          keyObj.quantity = Math.max(0, (keyObj.quantity || 0) - (it.quantity || 0));
         }
       }
     });
@@ -6186,9 +6190,8 @@ try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity er
             if (input) {
               const keyObj = (window.keys||[]).find(k=>k.id===item.id);
               const max = keyObj ? (keyObj.quantity || 1) : 1;
-              input.min = 1;
-  input.removeAttribute('max');
-  if (!input.value || parseInt(input.value) < 1) input.value = 1;
+              input.min = 1; input.max = max;
+              if (!input.value || parseInt(input.value) < 1) input.value = 1;
             }
           }
         } catch(e){ console.warn('post addItem normalization', e); }
@@ -6561,7 +6564,7 @@ try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity er
             let input = el.querySelector('input[type="number"].item-quantity-input') || el.querySelector('input[type="number"]');
             const keyObj = (window.keys||[]).find(k=>k.id===item.id);
             const max = keyObj ? (keyObj.quantity || 1) : 1;
-            if (input) { input.min=1; input.removeAttribute('max'); if(!input.value||parseInt(input.value)<1) input.value = Math.min(1, max); }
+            if (input) { input.min=1; input.max=max; if(!input.value||parseInt(input.value)<1) input.value = Math.min(1, max); }
           }
         } catch(e){ console.warn('normalize after addItem', e); }
       }, 60);
