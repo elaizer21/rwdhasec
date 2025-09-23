@@ -6830,5 +6830,129 @@ try { renderRecentActivity(); } catch(e) { console.warn('renderRecentActivity er
 </script>
 <!-- END SIGNATURE ACCESSOR PATCH -->
 
+
+<!-- BEGIN PATCH: Immediate reflect of returns + partial-return inventory update -->
+<script>
+(function(){
+  if (window.__immediate_return_patch_v1) return;
+  window.__immediate_return_patch_v1 = true;
+
+  const origHandle = window.handleCheckinSubmit || null;
+
+  // Helper to safely call possibly-async original handler
+  async function callOriginal(recordId){
+    try {
+      if (!origHandle) return null;
+      const result = origHandle.call(window, recordId);
+      if (result && typeof result.then === 'function') {
+        return await result;
+      }
+      return result;
+    } catch (e) {
+      console.warn('Original handleCheckinSubmit failed inside patch', e);
+      return null;
+    }
+  }
+
+  window.handleCheckinSubmit = async function(recordId){
+    // First, call original logic (so logs/signatures and form validation run)
+    let origResult = null;
+    try {
+      origResult = await callOriginal(recordId);
+    } catch(e){
+      console.warn('Error running original checkin handler', e);
+    }
+
+    try {
+      // Load stored structures
+      const history = JSON.parse(localStorage.getItem('accessHistory') || '[]');
+      const keys = JSON.parse(localStorage.getItem('keys') || '[]');
+      const logs = JSON.parse(localStorage.getItem('logs') || '[]');
+
+      const idx = history.findIndex(r => r && r.id === recordId);
+      if (idx === -1) {
+        // no matching record - nothing to do
+        // but still attempt to re-render UIs in case original changed data
+        if (typeof renderKeyTable === 'function') try{ renderKeyTable(); }catch(e){/*ignore*/ }
+        if (typeof renderCheckinTable === 'function') try{ renderCheckinTable(); }catch(e){/*ignore*/ }
+        if (typeof renderDashboard === 'function') try{ renderDashboard(); }catch(e){/*ignore*/ }
+        if (typeof renderRecentActivity === 'function') try{ renderRecentActivity(); }catch(e){/*ignore*/ }
+        if (typeof renderReport === 'function') try{ renderReport(); }catch(e){/*ignore*/ }
+        return origResult;
+      }
+
+      const record = history[idx];
+
+      // For each item in the record, compute how many units were newly returned (respecting previously returned)
+      (record.items_returned || []).forEach(item => {
+        try {
+          const inputEl = document.getElementById(`return_quantity_${item.type}_${item.id}`);
+          // If input exists use its numeric value; for cards with hidden inputs this will be present
+          const reportedReturn = inputEl ? (parseInt(inputEl.value, 10) || 0) : (item.type==='card' ? (item.quantity || 0) : 0);
+          const prevReturned = parseInt(item.returned || 0) || 0;
+          const maxAllowed = parseInt(item.quantity || 0) || 0;
+          // newly returned cannot exceed remaining not-yet-returned amount
+          const newlyReturned = Math.max(0, Math.min(maxAllowed - prevReturned, reportedReturn));
+          // update item.returned
+          item.returned = prevReturned + newlyReturned;
+
+          // If this is a key, add the newlyReturned units back to inventory
+          if (item.type === 'key' && newlyReturned > 0) {
+            const k = keys.find(kk => kk && kk.id === item.id);
+            if (k) {
+              k.quantity = (parseInt(k.quantity||0,10) + newlyReturned);
+            }
+          }
+        } catch(inner){
+          console.warn('Error processing returned item inside patch', inner);
+        }
+      });
+
+      // Update the record status & timestamps
+      const allReturned = (record.items_returned || []).every(i => (parseInt(i.returned||0,10) >= parseInt(i.quantity||0,10)));
+      if (allReturned) {
+        record.status = 'Returned';
+        record.time_brought = new Date().toLocaleString();
+      } else {
+        // if at least one item is returned but not all -> partial
+        const anyReturned = (record.items_returned || []).some(i => (parseInt(i.returned||0,10) > 0));
+        record.status = anyReturned ? 'Partially Returned' : record.status || 'Taken';
+      }
+
+      // Persist changes
+      try {
+        localStorage.setItem('keys', JSON.stringify(keys));
+        localStorage.setItem('accessHistory', JSON.stringify(history));
+        localStorage.setItem('logs', JSON.stringify(logs));
+      } catch(e){
+        console.warn('Failed to persist data after return patch', e);
+      }
+
+      // Re-render UI components so changes reflect immediately
+      if (typeof renderKeyTable === 'function') try{ renderKeyTable(); }catch(e){console.warn(e);}
+      if (typeof renderCheckinTable === 'function') try{ renderCheckinTable(); }catch(e){console.warn(e);}
+      if (typeof renderDashboard === 'function') try{ renderDashboard(); }catch(e){console.warn(e);}
+      if (typeof renderRecentActivity === 'function') try{ renderRecentActivity(); }catch(e){console.warn(e);}
+      if (typeof renderReport === 'function') try{ renderReport(); }catch(e){console.warn(e);}
+
+      // Friendly toast
+      if (typeof showToast === 'function') {
+        showToast('Return processed — inventory and activity updated.');
+      }
+
+    } catch(e){
+      console.warn('Immediate return patch failed', e);
+      if (typeof showToast === 'function') {
+        showToast('Return processed, but an internal update failed (see console).');
+      }
+    }
+
+    return origResult;
+  };
+
+})();
+</script>
+<!-- END PATCH -->
+
 </body>
 </html>
